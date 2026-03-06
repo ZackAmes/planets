@@ -1,15 +1,24 @@
 {
-  "name": "client",
-  "version": "0.0.0",
+  "name": "planets-client",
+  "version": "0.0.1",
+  "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.0.4"
+    "@cartridge/controller": "^0.13.9",
+    "@threlte/core": "^8.0.0",
+    "@threlte/extras": "^9.0.0",
+    "simplex-noise": "^4.0.3",
+    "starknet": "^9.4.2",
+    "svelte": "^5.0.0",
+    "three": "^0.170.0"
   },
   "devDependencies": {
-    "vite": "^1.0.0-rc.13",
-    "@vue/compiler-sfc": "^3.0.4"
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/three": "^0.170.0",
+    "vite": "^6.0.0"
   }
 }

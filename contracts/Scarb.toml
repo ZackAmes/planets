@@ -1,0 +1,47 @@
+[package]
+cairo-version = "2.13.1"
+name = "planets"
+version = "0.1.0"
+edition = "2024_07"
+
+[cairo]
+sierra-replace-ids = true
+
+[tool.scarb]
+allow-prebuilt-plugins = ["dojo_cairo_macros", "snforge_std"]
+
+[dependencies]
+starknet = "2.13.1"
+dojo = "1.8.0"
+game_components_metagame = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+game_components_minigame = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+game_components_utils = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+game_components_test_starknet = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+game_components_token = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+game_components_leaderboard = { git = "https://github.com/Provable-Games/game-components.git", tag = "v2.13.1" }
+
+openzeppelin_access = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v3.0.0-alpha.3" }
+openzeppelin_introspection = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v3.0.0-alpha.3" }
+openzeppelin_token = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v3.0.0-alpha.3" }
+openzeppelin_interfaces = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v3.0.0-alpha.3" }
+openzeppelin_upgrades = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v3.0.0-alpha.3" }
+
+alexandria_encoding = { git = "https://github.com/keep-starknet-strange/alexandria.git", tag = "v0.7.0" }
+graffiti = { git = "https://github.com/ponderingdemocritus/graffiti", rev = "bc569531791dbc71c6cd8d9bc154c34eedad31fe" }
+
+[scripts]
+migrate = "sozo migrate --rpc-url https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9 --rpc-header Authorization: Bearer $CARTRIDGE_RPC"
+
+[dev-dependencies]
+cairo_test = "2.13.1"
+dojo_snf_test = "1.8.0"
+snforge_std = "0.51.2"
+
+[[target.starknet-contract]]
+build-external-contracts = ["dojo::world::world_contract::world"]
+
+
+[profile.sepolia]
+
+[migration]
+manifest_abi_format = "per_contract"
