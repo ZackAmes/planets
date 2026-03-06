@@ -1,7 +1,7 @@
 [world]
 name = "Starnet"
 description = "A procedurally generated space exploration game on Starknet"
-seed = "planets_sepolia_v0"
+seed = "planets_sepolia_v1"
 
 [namespace]
 default = "planets"
@@ -12,11 +12,11 @@ account_address = "0x0694182a014b39855a1b139961a3f39e7d4b43527b30d892a630d66a2ab
 private_key = "0x0430638cc3ef026ad7a74d9ad143bfc15bf303cea0be1c972ab1f280c90a531a"
 
 [writers]
-"planets" = ["planets-game", "planets-game_token"]
+"planets" = ["planets-game_systems", "planets-game_token_systems"]
 
 [init_call_args]
 "planets-game_token_systems" = [
     "0x0694182a014b39855a1b139961a3f39e7d4b43527b30d892a630d66a2abe3780",
-    "0x04c5c1c662dabf2698052b8a1413420d4dd7b74ef373c33015feb50cffa46fdb",
-    "0x0"
+    "0x066f194e7f31ae037b828cc869278dddf96a7bbad0088144f4fb7bf89d80658f",
+    "0x1"
 ]

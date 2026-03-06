@@ -54,10 +54,10 @@ mod game_token_systems {
             .minigame
             .initializer(
                 creator_address,
-                "Planets",
+                "Starnet Planets",
                 "An onchain colony builder. Land on a planet and survive.",
-                "Provable Games",
-                "Provable Games",
+                "Presorts Games",
+                "Presorts Games",
                 "Strategy",
                 "",
                 Option::None,

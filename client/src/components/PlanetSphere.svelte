@@ -6,8 +6,10 @@
 
   let { seed = 42, canPick = false, colonyMarker = null, onlocationpick = null } = $props()
 
-  // Generate equirectangular terrain texture from seed
-  const canvas = generatePlanetTexture(seed)
+  // Capture seed once at mount — texture is static for the lifetime of this component.
+  // A new seed requires remounting (key={seed} on the parent Canvas).
+  const initialSeed = seed
+  const canvas = generatePlanetTexture(initialSeed)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
 

@@ -5,6 +5,7 @@
     colony,
     pendingLocation, // { col, row } | null — location chosen but not confirmed
     lastEvents,      // string[]
+    disabled = false,// true while a tx is pending
     onconfirm,       // () => void — confirm colony location
     onsubmit,        // (orders) => void — submit turn orders
   } = $props()
@@ -40,7 +41,9 @@
             <span class="bonus">Minerals: {colony.mineralRichness}/100</span>
           </div>
         {/if}
-        <button class="primary" onclick={onconfirm}>Settle Here</button>
+        <button class="primary" onclick={onconfirm} disabled={disabled}>
+          {disabled ? 'Confirming…' : 'Settle Here'}
+        </button>
       </div>
     {:else}
       <p class="hint">Click on the planet to choose a colony site.</p>
@@ -109,8 +112,8 @@
       {100 - total}% idle (no output)
     </div>
 
-    <button class="primary" onclick={handleSubmit} disabled={!valid}>
-      End Turn
+    <button class="primary" onclick={handleSubmit} disabled={!valid || disabled}>
+      {disabled ? 'Submitting…' : 'End Turn'}
     </button>
 
     {#if lastEvents.length > 0}
