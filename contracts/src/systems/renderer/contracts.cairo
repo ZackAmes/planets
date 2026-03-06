@@ -1,23 +1,36 @@
 // SPDX-License-Identifier: MIT
 
 use game_components_interfaces::GameDetail;
+use planets::models::planet::Planet;
+use planets::models::colony::Colony;
+use planets::models::building::Building;
+use starknet::ContractAddress;
 
 #[starknet::interface]
 pub trait IRendererSystems<T> {
     fn create_metadata(self: @T, planet_id: u64) -> ByteArray;
     fn generate_svg(self: @T, planet_id: u64) -> ByteArray;
     fn generate_details(self: @T, planet_id: u64) -> Span<GameDetail>;
+    fn get_planet(self: @T, planet_id: u64) -> Planet;
+    fn get_colony(self: @T, planet_id: u64) -> Colony;
+    fn get_player_planets(self: @T, player: ContractAddress) -> Array<u64>;
+    fn get_planet_buildings(self: @T, planet_id: u64) -> Array<Building>;
 }
 
 #[dojo::contract]
 mod renderer_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
+    use planets::models::colony::Colony;
+    use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
+    use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
     use planets::utils::renderer::encoding::U256BytesUsedTraitImpl;
     use planets::utils::renderer::renderer_utils::{create_metadata, generate_svg};
+    use dojo::world::WorldStorage;
     use dojo::model::ModelStorage;
     use dojo::world::WorldStorageTrait;
     use game_components_interfaces::{GameDetail, IMinigameDetails, IMinigameDetailsSVG};
+    use starknet::ContractAddress;
     use super::IRendererSystems;
 
     #[abi(embed_v0)]
@@ -104,7 +117,8 @@ mod renderer_systems {
             let planet_id: u64 = token_id.try_into().unwrap_or(0);
             let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
-            generate_svg(planet_id, planet, planet_name)
+            let buildings = _read_buildings(@world, planet_id);
+            generate_svg(planet_id, planet, planet_name, buildings.span())
         }
     }
 
@@ -114,14 +128,16 @@ mod renderer_systems {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
-            create_metadata(planet_id, planet, planet_name)
+            let buildings = _read_buildings(@world, planet_id);
+            create_metadata(planet_id, planet, planet_name, buildings.span())
         }
 
         fn generate_svg(self: @ContractState, planet_id: u64) -> ByteArray {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
-            generate_svg(planet_id, planet, planet_name)
+            let buildings = _read_buildings(@world, planet_id);
+            generate_svg(planet_id, planet, planet_name, buildings.span())
         }
 
         fn generate_details(self: @ContractState, planet_id: u64) -> Span<GameDetail> {
@@ -134,5 +150,52 @@ mod renderer_systems {
             ]
                 .span()
         }
+
+        fn get_planet(self: @ContractState, planet_id: u64) -> Planet {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_colony(self: @ContractState, planet_id: u64) -> Colony {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_player_planets(self: @ContractState, player: ContractAddress) -> Array<u64> {
+            let world = self.world(@DEFAULT_NS());
+            let registry: PlayerPlanets = world.read_model(player);
+            let mut result: Array<u64> = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= registry.count {
+                    break;
+                }
+                let entry: PlayerPlanetEntry = world.read_model((player, i));
+                result.append(entry.planet_id);
+                i += 1;
+            };
+            result
+        }
+
+        fn get_planet_buildings(self: @ContractState, planet_id: u64) -> Array<Building> {
+            let world = self.world(@DEFAULT_NS());
+            _read_buildings(@world, planet_id)
+        }
+    }
+
+    fn _read_buildings(world: @WorldStorage, planet_id: u64) -> Array<Building> {
+        let bcount: PlanetBuildingCount = world.read_model(planet_id);
+        let mut result: Array<Building> = array![];
+        let mut i: u32 = 0;
+        loop {
+            if i >= bcount.count {
+                break;
+            }
+            let entry: PlanetBuildingEntry = world.read_model((planet_id, i));
+            let building: Building = world.read_model((planet_id, entry.lon, entry.lat));
+            result.append(building);
+            i += 1;
+        };
+        result
     }
 }

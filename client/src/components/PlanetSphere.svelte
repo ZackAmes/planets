@@ -2,9 +2,17 @@
   import { T, useTask } from '@threlte/core'
   import * as THREE from 'three'
   import { generatePlanetTexture } from '../lib/planetGen.js'
-  import { PLANET_WIDTH, PLANET_HEIGHT } from '../lib/gameLogic.js'
+  import { PLANET_WIDTH, PLANET_HEIGHT, lonLatToLocal, uvToLonLat, BUILDING_INFO } from '../lib/gameLogic.js'
 
-  let { seed = 42, canPick = false, colonyMarker = null, onlocationpick = null } = $props()
+  let {
+    seed = 42,
+    canPick = false,          // colony founding mode
+    canBuild = false,         // building placement mode
+    colonyMarker = null,      // [x,y,z] in local sphere space
+    buildings = [],           // [{ lon, lat, buildingType }]
+    onlocationpick = null,    // (col, row, lon, lat, localPos) => void
+    onbuildpick = null,       // (lon, lat, localPos) => void
+  } = $props()
 
   // Capture seed once at mount — texture is static for the lifetime of this component.
   // A new seed requires remounting (key={seed} on the parent Canvas).
@@ -15,27 +23,39 @@
 
   let mesh = $state(null)
 
-  // Rotate the planet ~one full turn per 60 seconds
   useTask((delta) => {
     if (mesh) mesh.rotation.y += delta * 0.1
   })
 
   function handleClick(event) {
-    if (!canPick || !onlocationpick || !mesh) return
+    if (!mesh) return
     const uv = event.uv
     if (!uv) return
 
-    // UV: u=0 left → u=1 right, v=0 bottom → v=1 top in Three.js UV space.
-    // Our texture was drawn with y=0 at the top (north), so v is flipped.
-    const col = Math.min(PLANET_WIDTH - 1, Math.floor(uv.x * PLANET_WIDTH))
-    const row = Math.min(PLANET_HEIGHT - 1, Math.floor((1 - uv.y) * PLANET_HEIGHT))
-
-    // Compute the click position in the sphere's local space so the marker
-    // can be placed as a child mesh (it will rotate with the planet).
     const localPoint = mesh.worldToLocal(event.point.clone()).normalize().multiplyScalar(8.15)
+    const localPos = [localPoint.x, localPoint.y, localPoint.z]
+    const { lon, lat } = uvToLonLat(uv.x, uv.y)
 
-    onlocationpick(col, row, uv.x, uv.y, [localPoint.x, localPoint.y, localPoint.z])
+    if (canBuild && onbuildpick) {
+      onbuildpick(lon, lat, localPos)
+      return
+    }
+
+    if (canPick && onlocationpick) {
+      const col = Math.min(PLANET_WIDTH - 1, Math.floor(uv.x * PLANET_WIDTH))
+      const row = Math.min(PLANET_HEIGHT - 1, Math.floor((1 - uv.y) * PLANET_HEIGHT))
+      onlocationpick(col, row, lon, lat, localPos)
+    }
   }
+
+  // Precompute building marker positions in local sphere space
+  const buildingMarkers = $derived(
+    buildings.map((b) => ({
+      ...b,
+      pos: lonLatToLocal(b.lon, b.lat, 8.15),
+      color: BUILDING_INFO[b.buildingType]?.color ?? '#ffffff',
+    }))
+  )
 </script>
 
 <!-- Main planet sphere -->
@@ -60,9 +80,22 @@
       />
     </T.Mesh>
   {/if}
+
+  <!-- Building markers -->
+  {#each buildingMarkers as b}
+    <T.Mesh position={b.pos}>
+      <T.SphereGeometry args={[0.18, 6, 6]} />
+      <T.MeshStandardMaterial
+        color={b.color}
+        emissive={b.color}
+        emissiveIntensity={0.6}
+        roughness={0.4}
+      />
+    </T.Mesh>
+  {/each}
 </T.Mesh>
 
-<!-- Atmosphere glow (slightly larger sphere rendered from inside) -->
+<!-- Atmosphere glow -->
 <T.Mesh>
   <T.SphereGeometry args={[8.5, 64, 32]} />
   <T.MeshStandardMaterial

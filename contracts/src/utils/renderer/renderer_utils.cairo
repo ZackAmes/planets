@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use planets::models::planet::Planet;
+use planets::models::building::Building;
 use planets::utils::renderer::encoding::{U256BytesUsedTraitImpl, bytes_base64_encode};
 use game_components_interfaces::GameDetail;
 use graffiti::json::JsonImpl;
@@ -9,12 +10,13 @@ use graffiti::json::JsonImpl;
 // Public entry points
 // ---------------------------------------------------------------------------
 
-pub fn create_metadata(planet_id: u64, planet: Planet, planet_name: felt252) -> ByteArray {
-    // Read fields before planet is moved into the SVG builder
+pub fn create_metadata(
+    planet_id: u64, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+) -> ByteArray {
     let pop = planet.population;
     let seed_val = planet.seed;
 
-    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id);
+    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id, buildings);
     let base64_image = format!("data:image/svg+xml;base64,{}", bytes_base64_encode(svg));
 
     let _id = format!("{}", planet_id);
@@ -45,8 +47,10 @@ pub fn create_metadata(planet_id: u64, planet: Planet, planet_name: felt252) -> 
     format!("data:application/json;base64,{}", bytes_base64_encode(metadata))
 }
 
-pub fn generate_svg(planet_id: u64, planet: Planet, planet_name: felt252) -> ByteArray {
-    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id);
+pub fn generate_svg(
+    planet_id: u64, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+) -> ByteArray {
+    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id, buildings);
     format!("data:image/svg+xml;base64,{}", bytes_base64_encode(svg))
 }
 
@@ -61,24 +65,21 @@ pub fn generate_details(planet: Planet) -> Span<GameDetail> {
 
 // ---------------------------------------------------------------------------
 // Animated rotating planet SVG
-//
-// Layout: 600x600 canvas, planet circle centred at (300,300) r=255.
-// Terrain is 8 vertical strips (75px each) repeated twice (1200px total).
-// An animateTransform slides the strips -600px over 12 s for seamless spin.
-// Lighting + atmosphere overlays are applied on top of the clip group.
 // ---------------------------------------------------------------------------
 
 fn _build_rotating_planet_svg(
-    planet: Planet, planet_name: felt252, planet_id: u64,
+    planet: Planet,
+    planet_name: felt252,
+    planet_id: u64,
+    buildings: Span<Building>,
 ) -> ByteArray {
     let seed: u256 = planet.seed.into();
     let _name = _felt_to_ba(planet_name);
     let _id = format!("{}", planet_id);
-    let _pop = format!("{}", planet.population);
 
     let strips = _build_terrain_strips(seed);
+    let building_markers = _build_building_markers(buildings);
 
-    // Polar cap color: icy if seed byte 30 is even, ochre if odd
     let polar_byte: u32 = ((seed / _pow256(30)) % 256).try_into().unwrap_or(0);
     let polar_color: ByteArray = if polar_byte % 2 == 0 {
         "#dde8ec"
@@ -87,31 +88,26 @@ fn _build_rotating_planet_svg(
     };
 
     "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>"
-        // -- defs -------------------------------------------------------
         + "<defs>"
         + "<clipPath id='pc'><circle cx='300' cy='300' r='255'/></clipPath>"
-        // lit side (top-left highlight)
         + "<radialGradient id='lit' cx='35%' cy='28%' r='65%'>"
         + "<stop offset='0%' stop-color='#fff' stop-opacity='0.28'/>"
         + "<stop offset='100%' stop-color='#000' stop-opacity='0'/>"
         + "</radialGradient>"
-        // dark side shadow
         + "<radialGradient id='shad' cx='78%' cy='78%' r='55%'>"
         + "<stop offset='30%' stop-color='#000' stop-opacity='0'/>"
         + "<stop offset='100%' stop-color='#000' stop-opacity='0.72'/>"
         + "</radialGradient>"
         + "</defs>"
-        // -- space background -------------------------------------------
         + "<rect width='600' height='600' fill='#050510'/>"
-        // -- planet surface (clipped) -----------------------------------
         + "<g clip-path='url(#pc)'>"
-        // scrolling terrain
+        // Scrolling terrain + building markers share the same animating group
         + "<g>"
         + "<animateTransform attributeName='transform' type='translate' "
         + "from='0,0' to='-600,0' dur='12s' repeatCount='indefinite'/>"
         + strips
+        + building_markers
         + "</g>"
-        // polar caps (static — not inside the scrolling group)
         + "<ellipse cx='300' cy='48' rx='255' ry='55' fill='"
         + polar_color.clone()
         + "' opacity='0.88'/>"
@@ -119,13 +115,10 @@ fn _build_rotating_planet_svg(
         + polar_color
         + "' opacity='0.88'/>"
         + "</g>"
-        // -- lighting overlays ------------------------------------------
         + "<circle cx='300' cy='300' r='255' fill='url(#lit)'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#shad)'/>"
-        // atmosphere rim
         + "<circle cx='300' cy='300' r='255' fill='none' "
         + "stroke='#4a8fd4' stroke-width='4' opacity='0.35'/>"
-        // -- labels -----------------------------------------------------
         + "<text x='300' y='578' text-anchor='middle' fill='#6ab4ff' "
         + "font-size='18' font-family='monospace'>"
         + _name
@@ -138,10 +131,76 @@ fn _build_rotating_planet_svg(
 }
 
 // ---------------------------------------------------------------------------
+// Building markers
+//
+// Each building is rendered as a small labelled circle at its terrain
+// position, duplicated at x+600 so it loops with the 12-second scroll.
+//
+// Coordinate mapping (600px canvas):
+//   x = lon / 6    (lon 0-3599 → x 0-599)
+//   y = lat / 3    (lat 0-1799 → y 0-599)
+// ---------------------------------------------------------------------------
+
+fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
+    let mut result: ByteArray = "";
+    let mut i: u32 = 0;
+    loop {
+        if i >= buildings.len() {
+            break;
+        }
+        let b = buildings.at(i);
+        let lon: u16 = *b.lon;
+        let lat: u16 = *b.lat;
+        let bt: u8 = *b.building_type;
+
+        let x: u32 = lon.into() / 6_u32;
+        let y: u32 = lat.into() / 3_u32;
+        let x2: u32 = x + 600;
+
+        let xs = format!("{}", x);
+        let ys = format!("{}", y);
+        let x2s = format!("{}", x2);
+
+        let (fill, letter): (ByteArray, ByteArray) = if bt == 0 {
+            ("#4aaa44", "F") // Farm — green
+        } else if bt == 1 {
+            ("#999999", "M") // Mine — gray
+        } else if bt == 2 {
+            ("#4466ee", "B") // Barracks — blue
+        } else {
+            ("#ddaa22", "W") // Workshop — gold
+        };
+
+        let dot = "<circle r='6' fill='"
+            + fill.clone()
+            + "' stroke='#111' stroke-width='1' opacity='0.92'/>"
+            + "<text dy='0.38em' text-anchor='middle' fill='#fff' "
+            + "font-size='6' font-weight='bold' font-family='monospace'>"
+            + letter.clone()
+            + "</text>";
+
+        result += "<g transform='translate("
+            + xs.clone()
+            + ","
+            + ys.clone()
+            + ")'>"
+            + dot.clone()
+            + "</g>"
+            + "<g transform='translate("
+            + x2s
+            + ","
+            + ys
+            + ")'>"
+            + dot
+            + "</g>";
+
+        i += 1;
+    };
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Terrain strip generation
-// Extract 8 bytes from the seed (at offsets 0,4,8,...28 bytes) and map each
-// to a terrain colour.  Two copies are placed side by side (copy 2 at x+600)
-// so the 12-second scroll animation can loop seamlessly.
 // ---------------------------------------------------------------------------
 
 fn _build_terrain_strips(seed: u256) -> ByteArray {
@@ -151,7 +210,6 @@ fn _build_terrain_strips(seed: u256) -> ByteArray {
         if i >= 8 {
             break;
         }
-        // byte at position (i*4) from the LSB
         let byte_val: u32 = ((seed / _pow256(i * 4)) % 256).try_into().unwrap_or(0);
         let color = _terrain_color(byte_val % 10);
 
@@ -170,7 +228,6 @@ fn _build_terrain_strips(seed: u256) -> ByteArray {
     result
 }
 
-// 256^n — used to extract individual bytes from the u256 seed.
 fn _pow256(n: u32) -> u256 {
     let mut r: u256 = 1;
     let mut i: u32 = 0;
@@ -186,16 +243,16 @@ fn _pow256(n: u32) -> u256 {
 
 fn _terrain_color(idx: u32) -> ByteArray {
     match idx {
-        0 => "#1a5f7a", // deep ocean
-        1 => "#2a85a0", // shallow ocean
-        2 => "#4a7c39", // grassland
-        3 => "#1e4d1a", // forest
-        4 => "#c8972a", // desert
-        5 => "#7a6a5a", // highland
-        6 => "#5a5a6a", // mountain
-        7 => "#dde8ec", // snow
-        8 => "#c8b87a", // beach / scrubland
-        _ => "#2a7a5a", // marsh / swamp
+        0 => "#1a5f7a",
+        1 => "#2a85a0",
+        2 => "#4a7c39",
+        3 => "#1e4d1a",
+        4 => "#c8972a",
+        5 => "#7a6a5a",
+        6 => "#5a5a6a",
+        7 => "#dde8ec",
+        8 => "#c8b87a",
+        _ => "#2a7a5a",
     }
 }
 

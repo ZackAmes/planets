@@ -16,6 +16,7 @@ const policies = {
       methods: [
         { name: 'Found Colony', entrypoint: 'found_colony' },
         { name: 'Assign Orders', entrypoint: 'assign_orders' },
+        { name: 'Construct Building', entrypoint: 'construct_building' },
       ],
     },
   },
@@ -24,7 +25,7 @@ const policies = {
 // Singleton controller instance
 export const controller = new Controller({
   policies,
-  defaultChainId: 'SN_SEPOLIA',
+  defaultChainId: '0x534e5f5345504f4c4941', // SN_SEPOLIA
   chains: [{ rpcUrl: CONFIG.rpcUrl }],
 })
 

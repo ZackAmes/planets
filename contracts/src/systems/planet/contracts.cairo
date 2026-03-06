@@ -9,6 +9,7 @@ pub trait IPlanetSystems<T> {
 pub mod planet_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
+    use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
     use dojo::model::ModelStorage;
     use dojo::world::{WorldStorage, WorldStorageTrait};
     use starknet::{get_caller_address, get_block_timestamp, get_tx_info};
@@ -23,21 +24,33 @@ pub mod planet_systems {
         /// The seed is the transaction hash, ensuring each planet is unique.
         fn spawn_planet(ref self: ContractState, planet_id: u64, name: felt252) {
             let mut world: WorldStorage = self.world(@DEFAULT_NS());
+            let caller = get_caller_address();
             let seed: felt252 = get_tx_info().unbox().transaction_hash;
 
-            world.write_model(
-                @Planet {
-                    planet_id,
-                    owner: get_caller_address(),
-                    seed,
-                    width: PLANET_WIDTH,
-                    height: PLANET_HEIGHT,
-                    name,
-                    spawned_at: get_block_timestamp(),
-                    population: STARTING_POPULATION,
-                    action_count: 0,
-                }
-            );
+            let now = get_block_timestamp();
+            world
+                .write_model(
+                    @Planet {
+                        planet_id,
+                        owner: caller,
+                        seed,
+                        width: PLANET_WIDTH,
+                        height: PLANET_HEIGHT,
+                        name,
+                        spawned_at: now,
+                        last_action_at: now,
+                        population: STARTING_POPULATION,
+                        action_count: 0,
+                    }
+                );
+
+            // Index this planet under the caller's address so it can be
+            // looked up onchain without relying on client-side storage.
+            let mut registry: PlayerPlanets = world.read_model(caller);
+            let index = registry.count;
+            world.write_model(@PlayerPlanetEntry { player: caller, index, planet_id });
+            registry.count = index + 1;
+            world.write_model(@registry);
         }
     }
 }

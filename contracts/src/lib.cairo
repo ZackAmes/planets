@@ -18,6 +18,8 @@ pub mod systems {
 pub mod models {
     pub mod planet;
     pub mod colony;
+    pub mod player_planets;
+    pub mod building;
 }
 
 pub mod utils {

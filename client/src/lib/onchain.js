@@ -1,14 +1,29 @@
 /**
  * Contract interaction helpers.
- * Each function takes a starknet.js WalletAccount and returns
- * { transaction_hash } on success, or throws on failure.
- *
- * Cairo u64/u32/u8 values all serialize as single felt252 in calldata.
- * felt252 (e.g. names) can be passed as hex strings or BigInts.
+ * Each write function takes a starknet.js WalletAccount and returns
+ * transaction_hash on success, or throws on failure.
  */
 
 import { shortString } from 'starknet'
 import { CONFIG } from './config.js'
+import { prepareMintGame } from './contracts.js'
+
+// ---------------------------------------------------------------------------
+// game_token_systems — mint
+// ---------------------------------------------------------------------------
+
+/**
+ * Mint a game token for the player.
+ * Returns { transaction_hash, tokenId } where tokenId is the planet ID.
+ *
+ * mint_game is view (dispatches externally to the token contract), so we
+ * can sim-call it first to get the deterministic token ID, then execute.
+ */
+export async function mintGame(account, playerName) {
+  const { call, tokenId } = await prepareMintGame(account, playerName)
+  const { transaction_hash } = await account.execute([call])
+  return { transaction_hash, tokenId }
+}
 
 // ---------------------------------------------------------------------------
 // planet_systems
@@ -40,7 +55,6 @@ export async function spawnPlanet(account, planetId, name) {
 
 /**
  * Place the colony at (col, row) on the planet.
- * Terrain bonuses are derived onchain from poseidon(seed, col, row).
  */
 export async function foundColony(account, planetId, col, row) {
   const { transaction_hash } = await account.execute([
@@ -51,6 +65,27 @@ export async function foundColony(account, planetId, col, row) {
         '0x' + BigInt(planetId).toString(16), // u64
         col.toString(),                        // u32
         row.toString(),                        // u32
+      ],
+    },
+  ])
+  return transaction_hash
+}
+
+/**
+ * Construct a building at (lon, lat) on the planet.
+ * buildingType: 0=Farm, 1=Mine, 2=Barracks, 3=Workshop
+ * lon 0-359, lat 0-179
+ */
+export async function constructBuilding(account, planetId, lon, lat, buildingType) {
+  const { transaction_hash } = await account.execute([
+    {
+      contractAddress: CONFIG.gameSystemsAddress,
+      entrypoint: 'construct_building',
+      calldata: [
+        '0x' + BigInt(planetId).toString(16), // u64
+        lon.toString(),                        // u16
+        lat.toString(),                        // u16
+        buildingType.toString(),               // BuildingType enum discriminant (felt252)
       ],
     },
   ])
@@ -83,7 +118,6 @@ export async function assignOrders(account, planetId, { farming, mining, buildin
 
 /**
  * Wait for a transaction to be accepted on L2.
- * Returns the receipt.
  */
 export async function waitForTx(provider, txHash) {
   return provider.waitForTransaction(txHash, {
@@ -94,7 +128,7 @@ export async function waitForTx(provider, txHash) {
 
 /**
  * Convert a transaction hash (felt252 hex string) to a BigInt seed.
- * This is valid because spawn_planet uses get_tx_info().transaction_hash as seed.
+ * spawn_planet uses get_tx_info().transaction_hash as the planet seed.
  */
 export function txHashToSeed(txHash) {
   return BigInt(txHash)
