@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use game_components_minigame::structs::GameDetail;
+use game_components_interfaces::GameDetail;
 
 #[starknet::interface]
 pub trait IRendererSystems<T> {
@@ -14,21 +14,18 @@ mod renderer_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
     use planets::utils::renderer::encoding::U256BytesUsedTraitImpl;
-    use planets::utils::renderer::renderer_utils::{create_metadata, generate_details, generate_svg};
+    use planets::utils::renderer::renderer_utils::{create_metadata, generate_svg};
     use dojo::model::ModelStorage;
     use dojo::world::WorldStorageTrait;
-    use game_components_minigame::interface::{
-        IMinigameDetails, IMinigameDetailsSVG, IMinigameDispatcher, IMinigameDispatcherTrait,
-    };
-    use game_components_minigame::libs::require_owned_token;
-    use game_components_minigame::structs::GameDetail;
+    use game_components_interfaces::{GameDetail, IMinigameDetails, IMinigameDetailsSVG};
     use super::IRendererSystems;
 
     #[abi(embed_v0)]
     impl GameDetailsImpl of IMinigameDetails<ContractState> {
-        fn token_name(self: @ContractState, token_id: u64) -> ByteArray {
+        fn token_name(self: @ContractState, token_id: felt252) -> ByteArray {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
             let mut name: ByteArray = Default::default();
             if planet.name != 0 {
                 name
@@ -40,24 +37,74 @@ mod renderer_systems {
             name
         }
 
-        fn token_description(self: @ContractState, token_id: u64) -> ByteArray {
+        fn token_description(self: @ContractState, token_id: felt252) -> ByteArray {
             format!("An onchain colony - planet #{}", token_id)
         }
 
-        fn game_details(self: @ContractState, token_id: u64) -> Span<GameDetail> {
+        fn game_details(self: @ContractState, token_id: felt252) -> Span<GameDetail> {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
-            generate_details(planet)
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
+            array![
+                GameDetail { name: 'Population', value: planet.population.into() },
+                GameDetail { name: 'Turns', value: planet.action_count.into() },
+                GameDetail { name: 'Seed', value: planet.seed },
+            ]
+                .span()
+        }
+
+        fn token_name_batch(self: @ContractState, token_ids: Span<felt252>) -> Array<ByteArray> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.token_name(*token_ids.at(i)));
+                i += 1;
+            };
+            results
+        }
+
+        fn token_description_batch(
+            self: @ContractState, token_ids: Span<felt252>,
+        ) -> Array<ByteArray> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.token_description(*token_ids.at(i)));
+                i += 1;
+            };
+            results
+        }
+
+        fn game_details_batch(
+            self: @ContractState, token_ids: Span<felt252>,
+        ) -> Array<Span<GameDetail>> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.game_details(*token_ids.at(i)));
+                i += 1;
+            };
+            results
         }
     }
 
     #[abi(embed_v0)]
     impl GameDetailsSVGImpl of IMinigameDetailsSVG<ContractState> {
-        fn game_details_svg(self: @ContractState, token_id: u64) -> ByteArray {
+        fn game_details_svg(self: @ContractState, token_id: felt252) -> ByteArray {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
-            generate_svg(token_id, planet, planet_name)
+            generate_svg(planet_id, planet, planet_name)
         }
     }
 
@@ -80,7 +127,12 @@ mod renderer_systems {
         fn generate_details(self: @ContractState, planet_id: u64) -> Span<GameDetail> {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(planet_id);
-            generate_details(planet)
+            array![
+                GameDetail { name: 'Population', value: planet.population.into() },
+                GameDetail { name: 'Turns', value: planet.action_count.into() },
+                GameDetail { name: 'Seed', value: planet.seed },
+            ]
+                .span()
         }
     }
 }

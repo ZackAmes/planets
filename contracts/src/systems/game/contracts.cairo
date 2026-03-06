@@ -25,8 +25,10 @@ mod game_systems {
     use planets::models::colony::Colony;
     use dojo::model::ModelStorage;
     use dojo::world::{WorldStorage, WorldStorageTrait};
-    use game_components_minigame::interface::{IMinigameDispatcher, IMinigameDispatcherTrait};
-    use game_components_minigame::libs::{assert_token_ownership, post_action, pre_action};
+    use game_components_embeddable_game_standard::minigame::minigame::{
+        assert_token_ownership, post_action, pre_action,
+    };
+    use game_components_interfaces::{IMinigameDispatcher, IMinigameDispatcherTrait, IMinigame};
     use starknet::ContractAddress;
     use core::poseidon::poseidon_hash_span;
 
@@ -39,9 +41,10 @@ mod game_systems {
         fn found_colony(ref self: ContractState, planet_id: u64, col: u32, row: u32) {
             let mut world: WorldStorage = self.world(@DEFAULT_NS());
             let token_address = _get_token_address(world);
+            let token_id: felt252 = planet_id.into();
 
-            assert_token_ownership(token_address, planet_id);
-            pre_action(token_address, planet_id);
+            assert_token_ownership(token_address, token_id);
+            pre_action(token_address, token_id);
 
             let planet: Planet = world.read_model(planet_id);
             assert!(planet.population > 0, "Planets: planet not yet spawned");
@@ -76,7 +79,7 @@ mod game_systems {
                     }
                 );
 
-            post_action(token_address, planet_id);
+            post_action(token_address, token_id);
         }
 
         fn assign_orders(
@@ -89,9 +92,10 @@ mod game_systems {
         ) {
             let mut world: WorldStorage = self.world(@DEFAULT_NS());
             let token_address = _get_token_address(world);
+            let token_id: felt252 = planet_id.into();
 
-            assert_token_ownership(token_address, planet_id);
-            pre_action(token_address, planet_id);
+            assert_token_ownership(token_address, token_id);
+            pre_action(token_address, token_id);
 
             let mut planet: Planet = world.read_model(planet_id);
             let mut colony: Colony = world.read_model(planet_id);
@@ -212,7 +216,7 @@ mod game_systems {
             world.write_model(@planet);
             world.write_model(@colony);
 
-            post_action(token_address, planet_id);
+            post_action(token_address, token_id);
         }
     }
 

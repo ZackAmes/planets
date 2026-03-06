@@ -26,7 +26,7 @@ alexandria_encoding = { git = "https://github.com/keep-starknet-strange/alexandr
 graffiti = { git = "https://github.com/Provable-Games/graffiti"}
 
 [scripts]
-migrate = "sozo migrate --rpc-url https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9 --rpc-header Authorization: Bearer $CARTRIDGE_RPC --manifest-abi-format per_contract"
+migrate = "sozo migrate -P sepolia --rpc-url https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9 --rpc-header \"Authorization: Bearer $CARTRIDGE_RPC\" --manifest-abi-format per_contract"
 
 [dev-dependencies]
 cairo_test = "2.13.1"

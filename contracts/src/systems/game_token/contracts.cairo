@@ -10,10 +10,9 @@ mod game_token_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
     use dojo::model::ModelStorage;
-    use dojo::world::{WorldStorage, WorldStorageTrait};
-    use game_components_minigame::interface::{IMinigameDetails, IMinigameTokenData};
-    use game_components_minigame::minigame::MinigameComponent;
-    use game_components_minigame::structs::GameDetail;
+    use dojo::world::WorldStorageTrait;
+    use game_components_embeddable_game_standard::minigame::minigame_component::MinigameComponent;
+    use game_components_interfaces::{GameDetail, IMinigameDetails, IMinigameTokenData};
     use openzeppelin_introspection::src5::SRC5Component;
     use starknet::ContractAddress;
 
@@ -46,26 +45,35 @@ mod game_token_systems {
 
     fn dojo_init(
         ref self: ContractState,
-        creator_address: ContractAddress,
-        denshokan_address: ContractAddress,
-        renderer_address: Option<ContractAddress>,
+        game_creator: ContractAddress,
+        minigame_token_address: ContractAddress,
+        renderer_address: ContractAddress,
     ) {
+        let renderer = if renderer_address == starknet::contract_address_const::<0>() {
+            Option::None
+        } else {
+            Option::Some(renderer_address)
+        };
+
         self
             .minigame
             .initializer(
-                creator_address,
-                "Starnet Planets",
+                game_creator,
+                "Planets",
                 "An onchain colony builder. Land on a planet and survive.",
-                "Presorts Games",
-                "Presorts Games",
+                "Provable Games",
+                "Provable Games",
                 "Strategy",
                 "",
-                Option::None,
-                Option::None,
-                renderer_address,
-                Option::None,
-                Option::None,
-                denshokan_address,
+                Option::None, // color
+                Option::None, // client_url
+                renderer,
+                Option::None, // settings_address
+                Option::None, // objectives_address
+                minigame_token_address,
+                Option::None, // royalty_fraction
+                Option::None, // skills_address
+                1, // version
             );
     }
 
@@ -74,16 +82,44 @@ mod game_token_systems {
     // ------------------------------------------------------------------
     #[abi(embed_v0)]
     impl GameTokenDataImpl of IMinigameTokenData<ContractState> {
-        fn score(self: @ContractState, token_id: u64) -> u32 {
+        fn score(self: @ContractState, token_id: felt252) -> u64 {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
-            planet.population
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
+            planet.population.into()
         }
 
-        fn game_over(self: @ContractState, token_id: u64) -> bool {
+        fn game_over(self: @ContractState, token_id: felt252) -> bool {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
             planet.action_count > 0 && planet.population == 0
+        }
+
+        fn score_batch(self: @ContractState, token_ids: Span<felt252>) -> Array<u64> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.score(*token_ids.at(i)));
+                i += 1;
+            };
+            results
+        }
+
+        fn game_over_batch(self: @ContractState, token_ids: Span<felt252>) -> Array<bool> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.game_over(*token_ids.at(i)));
+                i += 1;
+            };
+            results
         }
     }
 
@@ -92,9 +128,10 @@ mod game_token_systems {
     // ------------------------------------------------------------------
     #[abi(embed_v0)]
     impl GameDetailsImpl of IMinigameDetails<ContractState> {
-        fn token_name(self: @ContractState, token_id: u64) -> ByteArray {
+        fn token_name(self: @ContractState, token_id: felt252) -> ByteArray {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
             let mut name: ByteArray = Default::default();
             if planet.name != 0 {
                 name
@@ -109,20 +146,62 @@ mod game_token_systems {
             name
         }
 
-        fn token_description(self: @ContractState, token_id: u64) -> ByteArray {
+        fn token_description(self: @ContractState, token_id: felt252) -> ByteArray {
             format!("An onchain colony - planet #{}", token_id)
         }
 
-        fn game_details(self: @ContractState, token_id: u64) -> Span<GameDetail> {
+        fn game_details(self: @ContractState, token_id: felt252) -> Span<GameDetail> {
             let world = self.world(@DEFAULT_NS());
-            let planet: Planet = world.read_model(token_id);
-            let pop = format!("{}", planet.population);
-            let turns = format!("{}", planet.action_count);
+            let planet_id: u64 = token_id.try_into().unwrap_or(0);
+            let planet: Planet = world.read_model(planet_id);
             array![
-                GameDetail { name: "Population", value: pop },
-                GameDetail { name: "Turns", value: turns },
+                GameDetail { name: 'Population', value: planet.population.into() },
+                GameDetail { name: 'Turns', value: planet.action_count.into() },
             ]
                 .span()
+        }
+
+        fn token_name_batch(self: @ContractState, token_ids: Span<felt252>) -> Array<ByteArray> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.token_name(*token_ids.at(i)));
+                i += 1;
+            };
+            results
+        }
+
+        fn token_description_batch(
+            self: @ContractState, token_ids: Span<felt252>,
+        ) -> Array<ByteArray> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.token_description(*token_ids.at(i)));
+                i += 1;
+            };
+            results
+        }
+
+        fn game_details_batch(
+            self: @ContractState, token_ids: Span<felt252>,
+        ) -> Array<Span<GameDetail>> {
+            let mut results = array![];
+            let mut i: u32 = 0;
+            loop {
+                if i >= token_ids.len() {
+                    break;
+                }
+                results.append(self.game_details(*token_ids.at(i)));
+                i += 1;
+            };
+            results
         }
     }
 
@@ -132,7 +211,8 @@ mod game_token_systems {
     #[abi(embed_v0)]
     impl GameTokenSystemsImpl of super::IGameTokenSystems<ContractState> {
         fn player_name(self: @ContractState, planet_id: u64) -> felt252 {
-            self.minigame.get_player_name(planet_id)
+            let token_id: felt252 = planet_id.into();
+            self.minigame.get_player_name(token_id)
         }
     }
 }

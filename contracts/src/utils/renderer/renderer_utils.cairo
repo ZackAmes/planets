@@ -2,7 +2,7 @@
 
 use planets::models::planet::Planet;
 use planets::utils::renderer::encoding::{U256BytesUsedTraitImpl, bytes_base64_encode};
-use game_components_minigame::structs::GameDetail;
+use game_components_interfaces::GameDetail;
 use graffiti::json::JsonImpl;
 
 // ---------------------------------------------------------------------------
@@ -51,14 +51,10 @@ pub fn generate_svg(planet_id: u64, planet: Planet, planet_name: felt252) -> Byt
 }
 
 pub fn generate_details(planet: Planet) -> Span<GameDetail> {
-    let pop = format!("{}", planet.population);
-    let actions = format!("{}", planet.action_count);
-    let seed = format!("{}", planet.seed);
-
     array![
-        GameDetail { name: "Population", value: pop },
-        GameDetail { name: "Turns", value: actions },
-        GameDetail { name: "Seed", value: seed },
+        GameDetail { name: 'Population', value: planet.population.into() },
+        GameDetail { name: 'Turns', value: planet.action_count.into() },
+        GameDetail { name: 'Seed', value: planet.seed },
     ]
         .span()
 }
