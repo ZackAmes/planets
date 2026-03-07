@@ -6,7 +6,7 @@
 
 import { shortString } from 'starknet'
 import { CONFIG } from './config.js'
-import { mintCall, getProvider, fetchPlayerPlanets } from './contracts.js'
+import { mintCall, getProvider, fetchDenshokanPlanets } from './contracts.js'
 
 // ---------------------------------------------------------------------------
 // denshokan — mint
@@ -21,7 +21,7 @@ export async function mintGame(account, playerName) {
   const call = mintCall(account.address, playerName)
   const { transaction_hash } = await account.execute([call])
   await waitForTx(getProvider(), transaction_hash)
-  const ids = await fetchPlayerPlanets(account.address)
+  const ids = await fetchDenshokanPlanets(account.address)
   const tokenId = ids.length > 0 ? ids[ids.length - 1] : null
   return { transaction_hash, tokenId }
 }

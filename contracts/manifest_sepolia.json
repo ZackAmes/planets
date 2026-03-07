@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x381899226c066a0262f45d6ab815f89818e0874ec3e66cdf72b5e92d8db4680",
-    "address": "0x12b55ae1212a82042368b6181b8665965db3cf17772bf6e969b3995b6e3d2c7",
-    "seed": "planets_sepolia_v1",
+    "address": "0x4ed4c91707adf4a5258ca143df547cb8e95b3872b2501fb7963795b2d54799d",
+    "seed": "planets_sepolia_v2",
     "name": "Starnet",
     "entrypoints": [
       "uuid",
@@ -1485,8 +1485,8 @@
   },
   "contracts": [
     {
-      "address": "0xbb0ebfcead0f39a436a05d57808547691857578b278373632a123f3408cbc4",
-      "class_hash": "0xb5694fd4b756f64dd1cf2255351530bfeb0422f93ef836a1d4965136d039ea",
+      "address": "0x132866a88b4e9add94a4f07a0813f10b17bdf4f1a1b9ec93f1f3f919700e2a",
+      "class_hash": "0x49ed8e24aa0173f5ee33629ae07a941cc5b8695b992aaf8530d706eedfc17a9",
       "abi": [
         {
           "type": "impl",
@@ -1544,6 +1544,28 @@
           "interface_name": "planets::systems::game::contracts::IGameSystems"
         },
         {
+          "type": "enum",
+          "name": "planets::models::building::BuildingType",
+          "variants": [
+            {
+              "name": "Farm",
+              "type": "()"
+            },
+            {
+              "name": "Mine",
+              "type": "()"
+            },
+            {
+              "name": "Barracks",
+              "type": "()"
+            },
+            {
+              "name": "Workshop",
+              "type": "()"
+            }
+          ]
+        },
+        {
           "type": "interface",
           "name": "planets::systems::game::contracts::IGameSystems",
           "items": [
@@ -1590,6 +1612,30 @@
                 {
                   "name": "defense",
                   "type": "core::integer::u8"
+                }
+              ],
+              "outputs": [],
+              "state_mutability": "external"
+            },
+            {
+              "type": "function",
+              "name": "construct_building",
+              "inputs": [
+                {
+                  "name": "planet_id",
+                  "type": "core::integer::u64"
+                },
+                {
+                  "name": "lon",
+                  "type": "core::integer::u16"
+                },
+                {
+                  "name": "lat",
+                  "type": "core::integer::u16"
+                },
+                {
+                  "name": "building_type",
+                  "type": "planets::models::building::BuildingType"
                 }
               ],
               "outputs": [],
@@ -1718,12 +1764,13 @@
       "systems": [
         "found_colony",
         "assign_orders",
+        "construct_building",
         "upgrade"
       ]
     },
     {
-      "address": "0x3653f97fd11362456254b77daede479bec99ac45754125ad26f94ba03cbe03c",
-      "class_hash": "0x6ca23e79ddd9c5daaf515daa9476a8bd21f9bf82e75d617c91594d9639f1de3",
+      "address": "0x5a1f2009b48cc3fc651e8225bb543225b31da9ab3b7c94646c64bfcd49941e5",
+      "class_hash": "0x3fc9628612bc6159fdb6ff19b336f41f5f340817a69f3a0267038b84cbf9d73",
       "abi": [
         {
           "type": "impl",
@@ -2542,8 +2589,8 @@
       ]
     },
     {
-      "address": "0x2615dcba9124015cdee699bc6c7f39aa8e7672ce3453f48e1135576b6454b8e",
-      "class_hash": "0x67793e596449862f8ee628a4ad0fb69c95ac92f5448e8cc5e0049268d0f2fe4",
+      "address": "0x73edb403725dd45cbc6fbe8a60317fc662c71e99a45324d031748a6adddc769",
+      "class_hash": "0x6e1306e4da65ec08e8ca591c6e8a7f8b38a2cf51c810c77e5802387b00b7fc7",
       "abi": [
         {
           "type": "impl",
@@ -2746,8 +2793,8 @@
       ]
     },
     {
-      "address": "0x6dd2531d4c3ec35756466e71c7f28afe99eed763e35f0f88a96a986a92c9c45",
-      "class_hash": "0x569910ce2126a2ca693dca174e34dac5be8199352cdfec4f2529f011009046d",
+      "address": "0x17da127432bb2cd274d4d0e54d2a09c5102a5b137ff92d746ea7527c9cc890",
+      "class_hash": "0x3b9c8be40da4ee42a2c04fc57a6fdfb950c2676b3c039463480b71ea0c4d6d6",
       "abi": [
         {
           "type": "impl",
@@ -2973,6 +3020,178 @@
           "interface_name": "planets::systems::renderer::contracts::IRendererSystems"
         },
         {
+          "type": "struct",
+          "name": "planets::models::planet::Planet",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "owner",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "seed",
+              "type": "core::felt252"
+            },
+            {
+              "name": "width",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "height",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "spawned_at",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "last_action_at",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "population",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "action_count",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::colony::Colony",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "col",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "row",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "founded",
+              "type": "core::bool"
+            },
+            {
+              "name": "food",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "minerals",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "build_points",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "defense",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "fertility",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "mineral_richness",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "farms",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "mines",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "barracks",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "workshops",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "farm_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "mine_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "barracks_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "workshop_output",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::building::Building",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "lon",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "lat",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "building_type",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "exists",
+              "type": "core::bool"
+            },
+            {
+              "name": "terrain_bonus",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "output_per_epoch",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
           "type": "interface",
           "name": "planets::systems::renderer::contracts::IRendererSystems",
           "items": [
@@ -3020,6 +3239,70 @@
               "outputs": [
                 {
                   "type": "core::array::Span::<game_components_interfaces::structs::minigame::GameDetail>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "get_planet",
+              "inputs": [
+                {
+                  "name": "planet_id",
+                  "type": "core::integer::u64"
+                }
+              ],
+              "outputs": [
+                {
+                  "type": "planets::models::planet::Planet"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "get_colony",
+              "inputs": [
+                {
+                  "name": "planet_id",
+                  "type": "core::integer::u64"
+                }
+              ],
+              "outputs": [
+                {
+                  "type": "planets::models::colony::Colony"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "get_player_planets",
+              "inputs": [
+                {
+                  "name": "player",
+                  "type": "core::starknet::contract_address::ContractAddress"
+                }
+              ],
+              "outputs": [
+                {
+                  "type": "core::array::Array::<core::integer::u64>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "get_planet_buildings",
+              "inputs": [
+                {
+                  "name": "planet_id",
+                  "type": "core::integer::u64"
+                }
+              ],
+              "outputs": [
+                {
+                  "type": "core::array::Array::<planets::models::building::Building>"
                 }
               ],
               "state_mutability": "view"
@@ -3159,6 +3442,531 @@
           "key": true
         },
         {
+          "name": "lon",
+          "type": "core::integer::u16",
+          "key": true
+        },
+        {
+          "name": "lat",
+          "type": "core::integer::u16",
+          "key": true
+        },
+        {
+          "name": "building_type",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "exists",
+          "type": "core::bool",
+          "key": false
+        },
+        {
+          "name": "terrain_bonus",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "output_per_epoch",
+          "type": "core::integer::u32",
+          "key": false
+        }
+      ],
+      "class_hash": "0x6b214e5c8c8b901fc3d5eac080e9e14b41d5789d7c9c020da46a8d2bc7b5498",
+      "tag": "planets-Building",
+      "selector": "0x2db0421573db2890f931f038cd24b23237648b5a353c0dcb6b4b31809c505b8",
+      "abi": [
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::building::Building",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "lon",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "lat",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "building_type",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "exists",
+              "type": "core::bool"
+            },
+            {
+              "name": "terrain_bonus",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "output_per_epoch",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_abi",
+          "inputs": [
+            {
+              "name": "model",
+              "type": "planets::models::building::Building"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::building::BuildingValue",
+          "members": [
+            {
+              "name": "building_type",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "exists",
+              "type": "core::bool"
+            },
+            {
+              "name": "terrain_bonus",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "output_per_epoch",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_values",
+          "inputs": [
+            {
+              "name": "value",
+              "type": "planets::models::building::BuildingValue"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "ensure_unique",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "impl",
+          "name": "Building__DojoDeployedModelImpl",
+          "interface_name": "dojo::meta::interface::IDeployedResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::byte_array::ByteArray",
+          "members": [
+            {
+              "name": "data",
+              "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+              "name": "pending_word",
+              "type": "core::felt252"
+            },
+            {
+              "name": "pending_word_len",
+              "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IDeployedResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "dojo_name",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::byte_array::ByteArray"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "Building__DojoStoredModelImpl",
+          "interface_name": "dojo::meta::interface::IStoredResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::integer::u8>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::integer::u8>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::layout::FieldLayout",
+          "members": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::Layout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::layout::Layout",
+          "variants": [
+            {
+              "name": "Fixed",
+              "type": "core::array::Span::<core::integer::u8>"
+            },
+            {
+              "name": "Struct",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "Enum",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::felt252>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::felt252>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Enum",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::introspect::Ty",
+          "variants": [
+            {
+              "name": "Primitive",
+              "type": "core::felt252"
+            },
+            {
+              "name": "Struct",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "Enum",
+              "type": "dojo::meta::introspect::Enum"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Member",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "ty",
+              "type": "dojo::meta::introspect::Ty"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Member>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Struct",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IStoredResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "layout",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::layout::Layout"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "schema",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::introspect::Struct"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "Building__DojoModelImpl",
+          "interface_name": "dojo::model::interface::IModel"
+        },
+        {
+          "type": "enum",
+          "name": "core::option::Option::<core::integer::u32>",
+          "variants": [
+            {
+              "name": "Some",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "None",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::model::definition::ModelDef",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            },
+            {
+              "name": "schema",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "packed_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            },
+            {
+              "name": "unpacked_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::model::interface::IModel",
+          "items": [
+            {
+              "type": "function",
+              "name": "unpacked_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "packed_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "definition",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::model::definition::ModelDef"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "use_legacy_storage",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::bool"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "planets::models::building::m_Building::Event",
+          "kind": "enum",
+          "variants": []
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "name": "planet_id",
+          "type": "core::integer::u64",
+          "key": true
+        },
+        {
           "name": "col",
           "type": "core::integer::u32",
           "key": false
@@ -3184,7 +3992,7 @@
           "key": false
         },
         {
-          "name": "buildings",
+          "name": "build_points",
           "type": "core::integer::u32",
           "key": false
         },
@@ -3202,9 +4010,49 @@
           "name": "mineral_richness",
           "type": "core::integer::u8",
           "key": false
+        },
+        {
+          "name": "farms",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "mines",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "barracks",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "workshops",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "farm_output",
+          "type": "core::integer::u32",
+          "key": false
+        },
+        {
+          "name": "mine_output",
+          "type": "core::integer::u32",
+          "key": false
+        },
+        {
+          "name": "barracks_output",
+          "type": "core::integer::u32",
+          "key": false
+        },
+        {
+          "name": "workshop_output",
+          "type": "core::integer::u32",
+          "key": false
         }
       ],
-      "class_hash": "0x3de1c1adb65a00b24e640b17b65954b4ea9635896e86b8be9311f3a0a5b52ce",
+      "class_hash": "0x7cdf0986896cffbe74bc76d2701324f89514c8e96193b22e93f1d5d698a39a8",
       "tag": "planets-Colony",
       "selector": "0x1d836c843f08c48b569e81de69ac3ae2088c792b3b443c537364d27e86e46b7",
       "abi": [
@@ -3251,7 +4099,7 @@
               "type": "core::integer::u32"
             },
             {
-              "name": "buildings",
+              "name": "build_points",
               "type": "core::integer::u32"
             },
             {
@@ -3265,6 +4113,38 @@
             {
               "name": "mineral_richness",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "farms",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "mines",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "barracks",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "workshops",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "farm_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "mine_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "barracks_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "workshop_output",
+              "type": "core::integer::u32"
             }
           ]
         },
@@ -3305,7 +4185,7 @@
               "type": "core::integer::u32"
             },
             {
-              "name": "buildings",
+              "name": "build_points",
               "type": "core::integer::u32"
             },
             {
@@ -3319,6 +4199,38 @@
             {
               "name": "mineral_richness",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "farms",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "mines",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "barracks",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "workshops",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "farm_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "mine_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "barracks_output",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "workshop_output",
+              "type": "core::integer::u32"
             }
           ]
         },
@@ -3761,6 +4673,11 @@
           "key": false
         },
         {
+          "name": "last_action_at",
+          "type": "core::integer::u64",
+          "key": false
+        },
+        {
           "name": "population",
           "type": "core::integer::u32",
           "key": false
@@ -3771,7 +4688,7 @@
           "key": false
         }
       ],
-      "class_hash": "0x338dff09957caf8deb74b67411d62f6d5eea6b436bd0d78c069fd4d45e23c5d",
+      "class_hash": "0x51c588ff3f4426793d7e9f37eb6bf1fcfddf75786cf6ea6086d2151d1650891",
       "tag": "planets-Planet",
       "selector": "0x40c3493f7ebe73a02a3ac7c6efbe33a480aba281bfa8067cbfb9e004b9558c2",
       "abi": [
@@ -3805,6 +4722,10 @@
             },
             {
               "name": "spawned_at",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "last_action_at",
               "type": "core::integer::u64"
             },
             {
@@ -3855,6 +4776,10 @@
             },
             {
               "name": "spawned_at",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "last_action_at",
               "type": "core::integer::u64"
             },
             {
@@ -4277,6 +5202,1909 @@
         {
           "type": "event",
           "name": "planets::models::planet::m_Planet::Event",
+          "kind": "enum",
+          "variants": []
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "name": "planet_id",
+          "type": "core::integer::u64",
+          "key": true
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32",
+          "key": false
+        }
+      ],
+      "class_hash": "0x79d423bd95474bc2fd29f57af7fb268c5acc703b6ba812aa0ddbbfd873ab9f9",
+      "tag": "planets-PlanetBuildingCount",
+      "selector": "0x1ca4d0491b77b7d0772fbaddec2de6b90726524350c366b86c85163ed0dba36",
+      "abi": [
+        {
+          "type": "struct",
+          "name": "planets::models::building::PlanetBuildingCount",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "count",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_abi",
+          "inputs": [
+            {
+              "name": "model",
+              "type": "planets::models::building::PlanetBuildingCount"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::building::PlanetBuildingCountValue",
+          "members": [
+            {
+              "name": "count",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_values",
+          "inputs": [
+            {
+              "name": "value",
+              "type": "planets::models::building::PlanetBuildingCountValue"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "ensure_unique",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingCount__DojoDeployedModelImpl",
+          "interface_name": "dojo::meta::interface::IDeployedResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::byte_array::ByteArray",
+          "members": [
+            {
+              "name": "data",
+              "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+              "name": "pending_word",
+              "type": "core::felt252"
+            },
+            {
+              "name": "pending_word_len",
+              "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IDeployedResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "dojo_name",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::byte_array::ByteArray"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingCount__DojoStoredModelImpl",
+          "interface_name": "dojo::meta::interface::IStoredResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::integer::u8>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::integer::u8>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::layout::FieldLayout",
+          "members": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::Layout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::layout::Layout",
+          "variants": [
+            {
+              "name": "Fixed",
+              "type": "core::array::Span::<core::integer::u8>"
+            },
+            {
+              "name": "Struct",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "Enum",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::felt252>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::felt252>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Enum",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::introspect::Ty",
+          "variants": [
+            {
+              "name": "Primitive",
+              "type": "core::felt252"
+            },
+            {
+              "name": "Struct",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "Enum",
+              "type": "dojo::meta::introspect::Enum"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Member",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "ty",
+              "type": "dojo::meta::introspect::Ty"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Member>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Struct",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IStoredResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "layout",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::layout::Layout"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "schema",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::introspect::Struct"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingCount__DojoModelImpl",
+          "interface_name": "dojo::model::interface::IModel"
+        },
+        {
+          "type": "enum",
+          "name": "core::option::Option::<core::integer::u32>",
+          "variants": [
+            {
+              "name": "Some",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "None",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::model::definition::ModelDef",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            },
+            {
+              "name": "schema",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "packed_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            },
+            {
+              "name": "unpacked_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::model::interface::IModel",
+          "items": [
+            {
+              "type": "function",
+              "name": "unpacked_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "packed_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "definition",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::model::definition::ModelDef"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "use_legacy_storage",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::bool"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "planets::models::building::m_PlanetBuildingCount::Event",
+          "kind": "enum",
+          "variants": []
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "name": "planet_id",
+          "type": "core::integer::u64",
+          "key": true
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "lon",
+          "type": "core::integer::u16",
+          "key": false
+        },
+        {
+          "name": "lat",
+          "type": "core::integer::u16",
+          "key": false
+        }
+      ],
+      "class_hash": "0x7e21fe96029e9073dd6db62698584e4ab2d89090d40e9e26901b17e4a93b68d",
+      "tag": "planets-PlanetBuildingEntry",
+      "selector": "0x253adc0bccf6d9fe9dc1a45476a7f374cab57edb657248d85a435c40ff3ca26",
+      "abi": [
+        {
+          "type": "struct",
+          "name": "planets::models::building::PlanetBuildingEntry",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "index",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "lon",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "lat",
+              "type": "core::integer::u16"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_abi",
+          "inputs": [
+            {
+              "name": "model",
+              "type": "planets::models::building::PlanetBuildingEntry"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::building::PlanetBuildingEntryValue",
+          "members": [
+            {
+              "name": "lon",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "lat",
+              "type": "core::integer::u16"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_values",
+          "inputs": [
+            {
+              "name": "value",
+              "type": "planets::models::building::PlanetBuildingEntryValue"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "ensure_unique",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingEntry__DojoDeployedModelImpl",
+          "interface_name": "dojo::meta::interface::IDeployedResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::byte_array::ByteArray",
+          "members": [
+            {
+              "name": "data",
+              "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+              "name": "pending_word",
+              "type": "core::felt252"
+            },
+            {
+              "name": "pending_word_len",
+              "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IDeployedResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "dojo_name",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::byte_array::ByteArray"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingEntry__DojoStoredModelImpl",
+          "interface_name": "dojo::meta::interface::IStoredResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::integer::u8>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::integer::u8>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::layout::FieldLayout",
+          "members": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::Layout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::layout::Layout",
+          "variants": [
+            {
+              "name": "Fixed",
+              "type": "core::array::Span::<core::integer::u8>"
+            },
+            {
+              "name": "Struct",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "Enum",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::felt252>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::felt252>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Enum",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::introspect::Ty",
+          "variants": [
+            {
+              "name": "Primitive",
+              "type": "core::felt252"
+            },
+            {
+              "name": "Struct",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "Enum",
+              "type": "dojo::meta::introspect::Enum"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Member",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "ty",
+              "type": "dojo::meta::introspect::Ty"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Member>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Struct",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IStoredResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "layout",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::layout::Layout"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "schema",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::introspect::Struct"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlanetBuildingEntry__DojoModelImpl",
+          "interface_name": "dojo::model::interface::IModel"
+        },
+        {
+          "type": "enum",
+          "name": "core::option::Option::<core::integer::u32>",
+          "variants": [
+            {
+              "name": "Some",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "None",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::model::definition::ModelDef",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            },
+            {
+              "name": "schema",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "packed_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            },
+            {
+              "name": "unpacked_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::model::interface::IModel",
+          "items": [
+            {
+              "type": "function",
+              "name": "unpacked_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "packed_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "definition",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::model::definition::ModelDef"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "use_legacy_storage",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::bool"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "planets::models::building::m_PlanetBuildingEntry::Event",
+          "kind": "enum",
+          "variants": []
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "name": "player",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "key": true
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "planet_id",
+          "type": "core::integer::u64",
+          "key": false
+        }
+      ],
+      "class_hash": "0xce0448a5cdc0d57b5036d0fd8f9350d68ae09c6b11109bda74524bd307da12",
+      "tag": "planets-PlayerPlanetEntry",
+      "selector": "0x358a05ce9b5f284a5f15df55b9c01c64b066a24b920c8bb909824b0801472f0",
+      "abi": [
+        {
+          "type": "struct",
+          "name": "planets::models::player_planets::PlayerPlanetEntry",
+          "members": [
+            {
+              "name": "player",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "index",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_abi",
+          "inputs": [
+            {
+              "name": "model",
+              "type": "planets::models::player_planets::PlayerPlanetEntry"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::player_planets::PlayerPlanetEntryValue",
+          "members": [
+            {
+              "name": "planet_id",
+              "type": "core::integer::u64"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_values",
+          "inputs": [
+            {
+              "name": "value",
+              "type": "planets::models::player_planets::PlayerPlanetEntryValue"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "ensure_unique",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanetEntry__DojoDeployedModelImpl",
+          "interface_name": "dojo::meta::interface::IDeployedResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::byte_array::ByteArray",
+          "members": [
+            {
+              "name": "data",
+              "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+              "name": "pending_word",
+              "type": "core::felt252"
+            },
+            {
+              "name": "pending_word_len",
+              "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IDeployedResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "dojo_name",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::byte_array::ByteArray"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanetEntry__DojoStoredModelImpl",
+          "interface_name": "dojo::meta::interface::IStoredResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::integer::u8>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::integer::u8>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::layout::FieldLayout",
+          "members": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::Layout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::layout::Layout",
+          "variants": [
+            {
+              "name": "Fixed",
+              "type": "core::array::Span::<core::integer::u8>"
+            },
+            {
+              "name": "Struct",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "Enum",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::felt252>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::felt252>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Enum",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::introspect::Ty",
+          "variants": [
+            {
+              "name": "Primitive",
+              "type": "core::felt252"
+            },
+            {
+              "name": "Struct",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "Enum",
+              "type": "dojo::meta::introspect::Enum"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Member",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "ty",
+              "type": "dojo::meta::introspect::Ty"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Member>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Struct",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IStoredResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "layout",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::layout::Layout"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "schema",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::introspect::Struct"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanetEntry__DojoModelImpl",
+          "interface_name": "dojo::model::interface::IModel"
+        },
+        {
+          "type": "enum",
+          "name": "core::option::Option::<core::integer::u32>",
+          "variants": [
+            {
+              "name": "Some",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "None",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::model::definition::ModelDef",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            },
+            {
+              "name": "schema",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "packed_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            },
+            {
+              "name": "unpacked_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::model::interface::IModel",
+          "items": [
+            {
+              "type": "function",
+              "name": "unpacked_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "packed_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "definition",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::model::definition::ModelDef"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "use_legacy_storage",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::bool"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "planets::models::player_planets::m_PlayerPlanetEntry::Event",
+          "kind": "enum",
+          "variants": []
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "name": "player",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "key": true
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32",
+          "key": false
+        }
+      ],
+      "class_hash": "0x37d6398febf1c1cc2d0375eddd1af7c815ca7a4fd0c4d9e23e458b2a9b9ea55",
+      "tag": "planets-PlayerPlanets",
+      "selector": "0x1449e86b2792de13d9f5a44f2ce7f9fb63e0980af9d4f7bdf2721e8123676ed",
+      "abi": [
+        {
+          "type": "struct",
+          "name": "planets::models::player_planets::PlayerPlanets",
+          "members": [
+            {
+              "name": "player",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "count",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_abi",
+          "inputs": [
+            {
+              "name": "model",
+              "type": "planets::models::player_planets::PlayerPlanets"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "struct",
+          "name": "planets::models::player_planets::PlayerPlanetsValue",
+          "members": [
+            {
+              "name": "count",
+              "type": "core::integer::u32"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "ensure_values",
+          "inputs": [
+            {
+              "name": "value",
+              "type": "planets::models::player_planets::PlayerPlanetsValue"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "ensure_unique",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "view"
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanets__DojoDeployedModelImpl",
+          "interface_name": "dojo::meta::interface::IDeployedResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::byte_array::ByteArray",
+          "members": [
+            {
+              "name": "data",
+              "type": "core::array::Array::<core::bytes_31::bytes31>"
+            },
+            {
+              "name": "pending_word",
+              "type": "core::felt252"
+            },
+            {
+              "name": "pending_word_len",
+              "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IDeployedResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "dojo_name",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::byte_array::ByteArray"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanets__DojoStoredModelImpl",
+          "interface_name": "dojo::meta::interface::IStoredResource"
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::integer::u8>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::integer::u8>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::layout::FieldLayout",
+          "members": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::layout::Layout>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::layout::Layout",
+          "variants": [
+            {
+              "name": "Fixed",
+              "type": "core::array::Span::<core::integer::u8>"
+            },
+            {
+              "name": "Struct",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::layout::Layout>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "Enum",
+              "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<core::felt252>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<core::felt252>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Enum",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "dojo::meta::introspect::Ty",
+          "variants": [
+            {
+              "name": "Primitive",
+              "type": "core::felt252"
+            },
+            {
+              "name": "Struct",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "Enum",
+              "type": "dojo::meta::introspect::Enum"
+            },
+            {
+              "name": "Tuple",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "Array",
+              "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+            },
+            {
+              "name": "ByteArray",
+              "type": "()"
+            },
+            {
+              "name": "FixedArray",
+              "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Member",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "ty",
+              "type": "dojo::meta::introspect::Ty"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "core::array::Span::<dojo::meta::introspect::Member>",
+          "members": [
+            {
+              "name": "snapshot",
+              "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::meta::introspect::Struct",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::felt252"
+            },
+            {
+              "name": "attrs",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "children",
+              "type": "core::array::Span::<dojo::meta::introspect::Member>"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::meta::interface::IStoredResource",
+          "items": [
+            {
+              "type": "function",
+              "name": "layout",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::layout::Layout"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "schema",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::meta::introspect::Struct"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "impl",
+          "name": "PlayerPlanets__DojoModelImpl",
+          "interface_name": "dojo::model::interface::IModel"
+        },
+        {
+          "type": "enum",
+          "name": "core::option::Option::<core::integer::u32>",
+          "variants": [
+            {
+              "name": "Some",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "None",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "struct",
+          "name": "dojo::model::definition::ModelDef",
+          "members": [
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            },
+            {
+              "name": "schema",
+              "type": "dojo::meta::introspect::Struct"
+            },
+            {
+              "name": "packed_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            },
+            {
+              "name": "unpacked_size",
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ]
+        },
+        {
+          "type": "enum",
+          "name": "core::bool",
+          "variants": [
+            {
+              "name": "False",
+              "type": "()"
+            },
+            {
+              "name": "True",
+              "type": "()"
+            }
+          ]
+        },
+        {
+          "type": "interface",
+          "name": "dojo::model::interface::IModel",
+          "items": [
+            {
+              "type": "function",
+              "name": "unpacked_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "packed_size",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::option::Option::<core::integer::u32>"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "definition",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "dojo::model::definition::ModelDef"
+                }
+              ],
+              "state_mutability": "view"
+            },
+            {
+              "type": "function",
+              "name": "use_legacy_storage",
+              "inputs": [],
+              "outputs": [
+                {
+                  "type": "core::bool"
+                }
+              ],
+              "state_mutability": "view"
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "planets::models::player_planets::m_PlayerPlanets::Event",
           "kind": "enum",
           "variants": []
         }

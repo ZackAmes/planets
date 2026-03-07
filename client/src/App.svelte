@@ -4,8 +4,8 @@
   import PlanetView from './components/PlanetView.svelte'
   import ColonyPanel from './components/ColonyPanel.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, assignOrders, constructBuilding } from './lib/onchain.js'
-  import { fetchPlayerPlanets, fetchPlanet, fetchColony, fetchBuildings } from './lib/contracts.js'
+  import { mintGame, spawnPlanet, foundColony, assignOrders, constructBuilding, txHashToSeed } from './lib/onchain.js'
+  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings } from './lib/contracts.js'
   import {
     foundColony as localFoundColony,
     assignOrders as localAssignOrders,
@@ -76,7 +76,7 @@
    */
   async function restoreState(playerAddress) {
     // 1. Look up planet IDs onchain
-    let ids = await fetchPlayerPlanets(playerAddress)
+    let ids = await fetchDenshokanPlanets(playerAddress)
 
     // 2. Fall back to localStorage if chain returns nothing yet
     if (ids.length === 0) {
@@ -148,7 +148,8 @@
     txPending = true
     txStatus = 'Minting planet token...'
     try {
-      const { tokenId } = await mintGame(account, planetName.trim())
+      const { transaction_hash, tokenId } = await mintGame(account, planetName.trim())
+      console.log('[mint] tx hash:', transaction_hash, 'tokenId:', tokenId?.toString())
       planetId = tokenId
       localStorage.setItem(`planets:${address}`, tokenId.toString())
       txStatus = 'Token minted!'
@@ -164,14 +165,17 @@
   // Spawn planet
   // ---------------------------------------------------------------------------
   async function handleSpawn() {
+    console.log('[spawn] called', { account: !!account, planetName, planetId })
     if (!account || !planetName.trim() || planetId == null) return
     txPending = true
     txStatus = 'Spawning planet...'
     try {
       const txHash = await spawnPlanet(account, planetId, planetName.trim())
+      console.log('[spawn] tx hash:', txHash)
       localStorage.setItem(`planets:${address}`, planetId.toString())
       // Transaction hash IS the seed (contract uses get_tx_info().transaction_hash)
       const seed = txHashToSeed(txHash)
+      console.log('[spawn] seed:', seed.toString())
       planet = {
         seed: Number(seed % BigInt(2 ** 53)), // safe JS number for planetGen
         seedFull: seed,
@@ -222,7 +226,8 @@
     txPending = true
     txStatus = 'Constructing building...'
     try {
-      await constructBuilding(account, planetId, lon, lat, type)
+      const buildTx = await constructBuilding(account, planetId, lon, lat, type)
+      console.log('[construct_building] tx hash:', buildTx, { lon, lat, type })
       // Compute terrain bonus client-side for optimistic update
       const terrain  = terrainAt(planet.seed, lon)
       const bonus    = calcTerrainBonus(type, terrain)
@@ -245,7 +250,8 @@
     txPending = true
     txStatus = 'Founding colony...'
     try {
-      await foundColony(account, planetId, pendingLocation.col, pendingLocation.row)
+      const foundTx = await foundColony(account, planetId, pendingLocation.col, pendingLocation.row)
+      console.log('[found_colony] tx hash:', foundTx)
       colony = localFoundColony(planet, pendingLocation.col, pendingLocation.row)
       confirmedMarker = pendingMarker
       pendingLocation = null
@@ -267,7 +273,8 @@
     txPending = true
     txStatus = 'Submitting orders...'
     try {
-      await assignOrders(account, planetId, orders)
+      const ordersTx = await assignOrders(account, planetId, orders)
+      console.log('[assign_orders] tx hash:', ordersTx, orders)
       const elapsed = elapsedSeconds
       const result = localAssignOrders(planet, colony, orders, elapsed)
       planet = result.planet
@@ -361,9 +368,15 @@
     <!-- Phase: spawn -->
     {:else if phase === 'spawn'}
       <div class="card">
-        <h2>Settle {planetName}</h2>
-        <p class="dim">Token #{planetId?.toString()} ready. Spawn your colony world.</p>
-        <button class="btn-primary" onclick={handleSpawn} disabled={txPending}>
+        <h2>Settle Your World</h2>
+        <p class="dim">Token #{planetId?.toString()} ready. Name and spawn your colony world.</p>
+        <input
+          class="input"
+          bind:value={planetName}
+          placeholder="Planet name"
+          maxlength="31"
+        />
+        <button class="btn-primary" onclick={handleSpawn} disabled={txPending || !planetName.trim()}>
           {txPending ? 'Spawning…' : 'Spawn Planet'}
         </button>
       </div>

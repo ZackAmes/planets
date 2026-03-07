@@ -52,6 +52,38 @@ export function rendererContract(providerOrAccount) {
 const DENSHOKAN_ADDRESS = denshokan[0].address
 
 // ---------------------------------------------------------------------------
+// fetchDenshokanPlanets
+//
+// Uses ERC721Enumerable on the Denshokan contract to get all token IDs
+// owned by a player. Returns an array of BigInt token IDs.
+// ---------------------------------------------------------------------------
+
+export async function fetchDenshokanPlanets(playerAddress) {
+  const provider = getProvider()
+
+  // balance_of(owner) → u256 (low, high)
+  const balRes = await provider.callContract({
+    contractAddress: DENSHOKAN_ADDRESS,
+    entrypoint: 'balance_of',
+    calldata: [playerAddress],
+  })
+  const balance = Number(BigInt(balRes[0]))
+  if (balance === 0) return []
+
+  // token_of_owner_by_index(owner, index: u256) → u256
+  const ids = []
+  for (let i = 0; i < balance; i++) {
+    const res = await provider.callContract({
+      contractAddress: DENSHOKAN_ADDRESS,
+      entrypoint: 'token_of_owner_by_index',
+      calldata: [playerAddress, i.toString(), '0x0'], // index as u256 low,high
+    })
+    ids.push(BigInt(res[0]))
+  }
+  return ids
+}
+
+// ---------------------------------------------------------------------------
 // mintCall — raw Call for denshokan.mint (no ABI parsing needed)
 // ---------------------------------------------------------------------------
 
