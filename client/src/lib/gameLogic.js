@@ -3,6 +3,8 @@
  * Used for optimistic local state simulation; the chain is the source of truth.
  */
 
+import { hash } from 'starknet'
+
 export const PLANET_WIDTH  = 50
 export const PLANET_HEIGHT = 40
 
@@ -19,36 +21,76 @@ export const BUILDING_INFO = [
   { type: 3, name: 'Workshop', color: '#ffaa22', mineralCost: 200, buildCost: 150, baseOutput: 10, resource: 'buildPoints', description: 'Build pts / epoch (terrain: forest > grassland)' },
 ]
 
-// Terrain type indices (mirror renderer_utils._terrain_color indices)
+// Terrain type indices (match terrain.cairo)
 const TERRAIN_NAMES = [
   'Deep Ocean', 'Shallow Ocean', 'Grassland', 'Forest', 'Desert',
-  'Highland', 'Mountain', 'Snow', 'Beach', 'Marsh',
+  'Highland', 'Mountain', 'Snow', 'Beach', 'Scrubland',
 ]
 
-/** 8 terrain strips on the planet, each covering lon/3600 × 450 = 450 lon units wide */
-const STRIP_WIDTH_LON = 450  // 3600 / 8 strips
+// Grid dimensions — must match terrain.cairo constants
+const TERRAIN_GRID_COLS = 20
+const TERRAIN_GRID_ROWS = 10
+const LON_PER_COL = 180  // 3600 / 20
+const LAT_PER_ROW = 180  // 1800 / 10
 
-/** Simple hash (not cryptographic — client preview only, not identical to Poseidon). */
-function clientHash(a, b) {
-  let h = (a ^ (b * 0x9e3779b9)) >>> 0
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0
-  return (h ^ (h >>> 16)) >>> 0
+/**
+ * Exact JS mirror of terrain.cairo's _cell_noise.
+ * Uses starknet.js Poseidon so results are identical to the contract.
+ * seed must be a BigInt (full felt252 planet seed).
+ */
+function cellNoise(seed, col, row, period) {
+  const wrapped = BigInt(col % period)
+  const h = hash.computePoseidonHashOnElements([seed, wrapped, BigInt(row)])
+  return Number(BigInt(h) % 256n)
 }
 
-/** Extract byte at position byteOffset from a BigInt (simulating u256 seed). */
-function seedByte(seed, byteOffset) {
-  return Number((seed >> BigInt(byteOffset * 8)) & 0xffn)
+function gridElevation(seed, col, row) {
+  const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
+  const cRow = Math.floor(row / 2)
+  const eCoarse = cellNoise(seed,        cCol, cRow, 5)
+  const eFine   = cellNoise(seed + 1n,   col,  row,  TERRAIN_GRID_COLS)
+  return Math.floor((eCoarse * 6 + eFine * 4) / 10)
+}
+
+function gridMoisture(seed, col, row) {
+  const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
+  const cRow = Math.floor(row / 2)
+  const mCoarse = cellNoise(seed + 7n,  cCol, cRow, 5)
+  const mFine   = cellNoise(seed + 13n, col,  row,  TERRAIN_GRID_COLS)
+  return Math.floor((mCoarse * 7 + mFine * 3) / 10)
+}
+
+function classifyTerrainInt(elevation, moisture, row) {
+  const polarBoost = (row === 0 || row === 9) ? 100
+                   : (row === 1 || row === 8) ? 50
+                   : (row === 2 || row === 7) ? 20
+                   : 0
+  const elev = Math.min(255, elevation + polarBoost)
+  if (elev < 64)  return 0  // deep ocean
+  if (elev < 82)  return 1  // shallow ocean
+  if (elev < 97)  return 8  // beach
+  if (elev < 192) {
+    if (moisture < 64)  return 4  // desert
+    if (moisture < 102) return 9  // scrubland
+    if (moisture < 140) return elev > 153 ? 5 : 2  // highland or grassland
+    return 3  // forest
+  }
+  if (elev < 222) return 6  // mountain
+  return 7  // snow
 }
 
 /**
- * Determine the terrain type (0-9) at a given lon (0-3599) using the planet seed.
- * Mirrors the strip generation in renderer_utils.cairo.
+ * Terrain type (0-9) at a given lon/lat. Exact match to terrain.cairo terrain_at().
+ * seed must be a BigInt (planet.seedFull — the full felt252 planet seed).
+ * lat defaults to equator (900) for callers that don't have lat yet.
  */
-export function terrainAt(seed, lon) {
-  const stripIndex = Math.floor(lon / STRIP_WIDTH_LON)  // 0-7
-  const byteVal = seedByte(BigInt(seed), stripIndex * 4)
-  return byteVal % 10
+export function terrainAt(seed, lon, lat = 900) {
+  const s = typeof seed === 'bigint' ? seed : BigInt(seed)
+  const col = Math.floor(lon / LON_PER_COL)
+  const row = Math.floor(lat / LAT_PER_ROW)
+  const elevation = gridElevation(s, col, row)
+  const moisture  = gridMoisture(s, col, row)
+  return classifyTerrainInt(elevation, moisture, row)
 }
 
 export function terrainName(terrainType) {

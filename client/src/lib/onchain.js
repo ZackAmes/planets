@@ -32,8 +32,8 @@ export async function mintGame(account, playerName) {
 
 /**
  * Initialize a planet for the given token id.
- * The contract uses the transaction hash as the planet seed, so
- * transaction_hash IS the seed — no extra read needed.
+ * The seed is assigned by the Cartridge VRF onchain, so we wait for the tx
+ * to be confirmed and let the caller fetch the planet to get the seed.
  */
 export async function spawnPlanet(account, planetId, name) {
   const nameFelt = shortString.encodeShortString(name)
@@ -47,7 +47,7 @@ export async function spawnPlanet(account, planetId, name) {
       ],
     },
   ])
-  return transaction_hash
+  await waitForTx(getProvider(), transaction_hash)
 }
 
 // ---------------------------------------------------------------------------

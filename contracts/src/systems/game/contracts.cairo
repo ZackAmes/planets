@@ -364,16 +364,17 @@ mod game_systems {
             colony.minerals -= mineral_cost;
             colony.build_points -= build_cost;
 
-            // Terrain bonus: determine which of the 8 seed strips covers this lon.
-            // Each strip spans 450 units (3600 / 8) of lon.
-            let seed_u256: u256 = planet.seed.into();
-            let strip_index: u32 = lon.into() / 450_u32; // 0-7
-            let byte_val: u32 = ((_seed_byte(seed_u256, strip_index * 4)) % 256)
-                .try_into()
-                .unwrap_or(0);
-            let terrain_type: u32 = byte_val % 10;
-
-            let terrain_bonus: u8 = _terrain_bonus(building_type, terrain_type);
+            // Terrain type from the 2-D hash noise grid (seamless, mirrors client).
+            let building_type_u8: u8 = match building_type {
+                BuildingType::Farm => 0,
+                BuildingType::Mine => 1,
+                BuildingType::Barracks => 2,
+                BuildingType::Workshop => 3,
+            };
+            let terrain_type: u32 = planets::libs::terrain::terrain_at(planet.seed, lon, lat);
+            let terrain_bonus: u8 = planets::libs::terrain::terrain_bonus(
+                building_type_u8, terrain_type,
+            );
 
             // output = base × (50 + bonus) / 100
             // At bonus=0  : 50% of base (poor terrain still produces)
@@ -404,13 +405,6 @@ mod game_systems {
                     colony.workshops += 1;
                     colony.workshop_output += output_per_epoch;
                 },
-            };
-
-            let building_type_u8: u8 = match building_type {
-                BuildingType::Farm => 0,
-                BuildingType::Mine => 1,
-                BuildingType::Barracks => 2,
-                BuildingType::Workshop => 3,
             };
 
             world
@@ -449,81 +443,4 @@ mod game_systems {
         minigame_dispatcher.token_address()
     }
 
-    /// Extract the u32 value at byte offset `byte_offset` from a u256 seed.
-    /// Equivalent to (seed >> (byte_offset * 8)) & 0xff but via division.
-    fn _seed_byte(seed: u256, byte_offset: u32) -> u256 {
-        let mut divisor: u256 = 1;
-        let mut i: u32 = 0;
-        loop {
-            if i >= byte_offset {
-                break;
-            }
-            divisor *= 256;
-            i += 1;
-        };
-        seed / divisor
-    }
-
-    /// Terrain suitability for a building type (0 = poor, 100 = ideal).
-    /// Terrain indices mirror renderer_utils._terrain_color:
-    ///   0=deep ocean, 1=shallow, 2=grassland, 3=forest, 4=desert,
-    ///   5=highland,   6=mountain, 7=snow,    8=beach,  9=marsh
-    fn _terrain_bonus(building_type: BuildingType, terrain: u32) -> u8 {
-        match building_type {
-            BuildingType::Farm => {
-                if terrain == 2 {
-                    100 // grassland — ideal
-                } else if terrain == 3 {
-                    60 // forest
-                } else if terrain == 9 {
-                    40 // marsh
-                } else if terrain == 8 {
-                    30 // beach/scrubland
-                } else if terrain == 5 {
-                    20 // highland
-                } else if terrain == 4 {
-                    10 // desert
-                } else {
-                    5 // ocean, snow, mountain
-                }
-            },
-            BuildingType::Mine => {
-                if terrain == 6 {
-                    100 // mountain — ideal
-                } else if terrain == 5 {
-                    70 // highland
-                } else if terrain == 4 {
-                    40 // desert
-                } else if terrain == 3 {
-                    20 // forest
-                } else {
-                    5 // everything else
-                }
-            },
-            BuildingType::Barracks => {
-                if terrain == 6 {
-                    60 // mountain stronghold
-                } else if terrain == 5 {
-                    50 // highland advantage
-                } else if terrain == 7 {
-                    40 // snow — defensible
-                } else if terrain == 3 {
-                    30 // forest cover
-                } else {
-                    20 // flat terrain
-                }
-            },
-            BuildingType::Workshop => {
-                if terrain == 3 {
-                    50 // forest — lumber
-                } else if terrain == 2 {
-                    40 // grassland
-                } else if terrain == 8 {
-                    30 // coastal trade
-                } else {
-                    20 // anywhere
-                }
-            },
-        }
-    }
 }

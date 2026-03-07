@@ -4,7 +4,7 @@
   import PlanetView from './components/PlanetView.svelte'
   import ColonyPanel from './components/ColonyPanel.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, assignOrders, constructBuilding, txHashToSeed } from './lib/onchain.js'
+  import { mintGame, spawnPlanet, foundColony, assignOrders, constructBuilding } from './lib/onchain.js'
   import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings } from './lib/contracts.js'
   import {
     foundColony as localFoundColony,
@@ -170,19 +170,19 @@
     txPending = true
     txStatus = 'Spawning planet...'
     try {
-      const txHash = await spawnPlanet(account, planetId, planetName.trim())
-      console.log('[spawn] tx hash:', txHash)
+      await spawnPlanet(account, planetId, planetName.trim())
       localStorage.setItem(`planets:${address}`, planetId.toString())
-      // Transaction hash IS the seed (contract uses get_tx_info().transaction_hash)
-      const seed = txHashToSeed(txHash)
-      console.log('[spawn] seed:', seed.toString())
+      txStatus = 'Reading planet seed...'
+      const p = await fetchPlanet(planetId)
+      if (!p) throw new Error('Planet not found after spawn')
+      console.log('[spawn] vrf seed:', p.seed.toString())
       planet = {
-        seed: Number(seed % BigInt(2 ** 53)), // safe JS number for planetGen
-        seedFull: seed,
-        population: 100,
-        actionCount: 0,
-        width: 50,
-        height: 40,
+        seed: p.seedJs,
+        seedFull: p.seed,
+        population: p.population,
+        actionCount: p.actionCount,
+        width: p.width,
+        height: p.height,
       }
       txStatus = 'Planet spawned!'
       phase = 'founding'
@@ -229,7 +229,7 @@
       const buildTx = await constructBuilding(account, planetId, lon, lat, type)
       console.log('[construct_building] tx hash:', buildTx, { lon, lat, type })
       // Compute terrain bonus client-side for optimistic update
-      const terrain  = terrainAt(planet.seed, lon)
+      const terrain  = terrainAt(planet.seedFull, lon, lat)
       const bonus    = calcTerrainBonus(type, terrain)
       const output   = buildingOutputPerEpoch(type, bonus)
       colony = applyConstruct(colony, type, bonus, output)

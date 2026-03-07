@@ -1,4 +1,4 @@
-import { createNoise2D } from 'simplex-noise'
+import { createNoise2D, createNoise3D } from 'simplex-noise'
 
 // Seeded PRNG (mulberry32) so the same seed always produces the same planet
 function mulberry32(seed) {
@@ -51,12 +51,14 @@ function hexPosition(col, row, width, height) {
 
 /**
  * Generates an equirectangular canvas texture for a sphere.
- * Same noise as generatePlanet but mapped to UV space.
+ * Uses 3D noise sampled on a cylinder surface (cos/sin for longitude, linear
+ * for latitude) so the left and right edges of the texture match perfectly —
+ * no seam when the texture wraps around the sphere.
  */
 export function generatePlanetTexture(seed, texWidth = 1024, texHeight = 512) {
   const rand = mulberry32(seed)
-  const elevationNoise = createNoise2D(rand)
-  const moistureNoise = createNoise2D(rand)
+  const elevationNoise = createNoise3D(rand)
+  const moistureNoise = createNoise3D(rand)
 
   const canvas = document.createElement('canvas')
   canvas.width = texWidth
@@ -64,21 +66,29 @@ export function generatePlanetTexture(seed, texWidth = 1024, texHeight = 512) {
   const ctx = canvas.getContext('2d')
   const imageData = ctx.createImageData(texWidth, texHeight)
 
+  const TWO_PI = Math.PI * 2
+
   for (let y = 0; y < texHeight; y++) {
     for (let x = 0; x < texWidth; x++) {
-      const nx = x / texWidth
-      const nz = y / texHeight
+      const nx = x / texWidth   // longitude 0..1
+      const nz = y / texHeight  // latitude  0..1
+
+      // Map longitude to a unit circle so nx=0 and nx=1 land on the same
+      // point → no seam when the equirectangular texture wraps the sphere.
+      const lon = nx * TWO_PI
+      const cx = Math.cos(lon)
+      const cy = Math.sin(lon)
 
       const e =
-        0.60 * ((elevationNoise(nx * 2, nz * 2) + 1) / 2) +
-        0.25 * ((elevationNoise(nx * 4, nz * 4) + 1) / 2) +
-        0.10 * ((elevationNoise(nx * 8, nz * 8) + 1) / 2) +
-        0.05 * ((elevationNoise(nx * 16, nz * 16) + 1) / 2)
+        0.60 * ((elevationNoise(cx * 2, cy * 2, nz * 2) + 1) / 2) +
+        0.25 * ((elevationNoise(cx * 4, cy * 4, nz * 4) + 1) / 2) +
+        0.10 * ((elevationNoise(cx * 8, cy * 8, nz * 8) + 1) / 2) +
+        0.05 * ((elevationNoise(cx * 16, cy * 16, nz * 16) + 1) / 2)
 
       const m =
-        0.70 * ((moistureNoise(nx * 3 + 100, nz * 3 + 100) + 1) / 2) +
-        0.20 * ((moistureNoise(nx * 6 + 100, nz * 6 + 100) + 1) / 2) +
-        0.10 * ((moistureNoise(nx * 12 + 100, nz * 12 + 100) + 1) / 2)
+        0.70 * ((moistureNoise(cx * 3 + 7, cy * 3 + 7, nz * 3 + 13) + 1) / 2) +
+        0.20 * ((moistureNoise(cx * 6 + 7, cy * 6 + 7, nz * 6 + 13) + 1) / 2) +
+        0.10 * ((moistureNoise(cx * 12 + 7, cy * 12 + 7, nz * 12 + 13) + 1) / 2)
 
       const terrain = classifyTerrain(e, m)
       const hex = TERRAIN[terrain].color

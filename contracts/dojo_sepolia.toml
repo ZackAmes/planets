@@ -1,7 +1,7 @@
 [world]
 name = "Starnet"
 description = "A procedurally generated space exploration game on Starknet"
-seed = "planets_sepolia_v2"
+seed = "planets_sepolia_v3"
 
 [namespace]
 default = "planets"

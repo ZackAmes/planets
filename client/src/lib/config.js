@@ -1,7 +1,7 @@
 // Contract configuration.
 // Addresses come from manifest_sepolia.json (sozo migrate output).
 // Override with VITE_ env vars for different deployments.
-
+import manifest from '../../../contracts/manifest_sepolia.json'
 export const CONFIG = {
   rpcUrl:
     import.meta.env.VITE_RPC_URL ??
@@ -9,23 +9,23 @@ export const CONFIG = {
 
   worldAddress:
     import.meta.env.VITE_WORLD_ADDRESS ??
-    '0x12b55ae1212a82042368b6181b8665965db3cf17772bf6e969b3995b6e3d2c7',
+    manifest.world.address,
 
   planetSystemsAddress:
     import.meta.env.VITE_PLANET_SYSTEMS_ADDRESS ??
-    '0x2615dcba9124015cdee699bc6c7f39aa8e7672ce3453f48e1135576b6454b8e',
+    manifest.contracts[2].address,
 
   gameSystemsAddress:
     import.meta.env.VITE_GAME_SYSTEMS_ADDRESS ??
-    '0xbb0ebfcead0f39a436a05d57808547691857578b278373632a123f3408cbc4',
+    manifest.contracts[0].address,
 
   gameTokenSystemsAddress:
     import.meta.env.VITE_GAME_TOKEN_SYSTEMS_ADDRESS ??
-    '0x3653f97fd11362456254b77daede479bec99ac45754125ad26f94ba03cbe03c',
+    manifest.contracts[1].address,
 
   rendererSystemsAddress:
     import.meta.env.VITE_RENDERER_SYSTEMS_ADDRESS ??
-    '0x6dd2531d4c3ec35756466e71c7f28afe99eed763e35f0f88a96a986a92c9c45',
+    manifest.contracts[3].address,
 
   namespace: import.meta.env.VITE_NAMESPACE ?? 'planets',
 }

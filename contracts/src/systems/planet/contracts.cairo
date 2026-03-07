@@ -12,7 +12,8 @@ pub mod planet_systems {
     use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
     use dojo::model::ModelStorage;
     use dojo::world::{WorldStorage, WorldStorageTrait};
-    use starknet::{get_caller_address, get_block_timestamp, get_tx_info};
+    use starknet::{get_caller_address, get_block_timestamp};
+    use planets::utils::vrf::VRFTrait;
 
     const PLANET_WIDTH: u32 = 50;
     const PLANET_HEIGHT: u32 = 40;
@@ -25,7 +26,7 @@ pub mod planet_systems {
         fn spawn_planet(ref self: ContractState, planet_id: u64, name: felt252) {
             let mut world: WorldStorage = self.world(@DEFAULT_NS());
             let caller = get_caller_address();
-            let seed: felt252 = get_tx_info().unbox().transaction_hash;
+            let seed: felt252 = VRFTrait::seed(VRFTrait::cartridge_vrf_address());
 
             let now = get_block_timestamp();
             world

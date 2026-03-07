@@ -3,6 +3,7 @@
 use planets::models::planet::Planet;
 use planets::models::building::Building;
 use planets::utils::renderer::encoding::{U256BytesUsedTraitImpl, bytes_base64_encode};
+use planets::libs::terrain::{terrain_elevation, terrain_moisture, classify_terrain};
 use game_components_interfaces::GameDetail;
 use graffiti::json::JsonImpl;
 
@@ -73,19 +74,11 @@ fn _build_rotating_planet_svg(
     planet_id: u64,
     buildings: Span<Building>,
 ) -> ByteArray {
-    let seed: u256 = planet.seed.into();
     let _name = _felt_to_ba(planet_name);
     let _id = format!("{}", planet_id);
 
-    let strips = _build_terrain_strips(seed);
+    let strips = _build_terrain_grid(planet.seed);
     let building_markers = _build_building_markers(buildings);
-
-    let polar_byte: u32 = ((seed / _pow256(30)) % 256).try_into().unwrap_or(0);
-    let polar_color: ByteArray = if polar_byte % 2 == 0 {
-        "#dde8ec"
-    } else {
-        "#c8b87a"
-    };
 
     "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>"
         + "<defs>"
@@ -104,16 +97,14 @@ fn _build_rotating_planet_svg(
         // Scrolling terrain + building markers share the same animating group
         + "<g>"
         + "<animateTransform attributeName='transform' type='translate' "
-        + "from='0,0' to='-600,0' dur='12s' repeatCount='indefinite'/>"
+        + "from='0,0' to='-600,0' dur='20s' repeatCount='indefinite'/>"
         + strips
         + building_markers
         + "</g>"
-        + "<ellipse cx='300' cy='48' rx='255' ry='55' fill='"
-        + polar_color.clone()
-        + "' opacity='0.88'/>"
-        + "<ellipse cx='300' cy='552' rx='255' ry='55' fill='"
-        + polar_color
-        + "' opacity='0.88'/>"
+        // Polar ice-cap overlays (rows 0+1 and 8+9 of the grid are snowy,
+        // but the ellipses add a smooth spherical look over the flat grid).
+        + "<ellipse cx='300' cy='60' rx='255' ry='70' fill='#dde8ec' opacity='0.72'/>"
+        + "<ellipse cx='300' cy='540' rx='255' ry='70' fill='#dde8ec' opacity='0.72'/>"
         + "</g>"
         + "<circle cx='300' cy='300' r='255' fill='url(#lit)'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#shad)'/>"
@@ -200,59 +191,69 @@ fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
 }
 
 // ---------------------------------------------------------------------------
-// Terrain strip generation
+// Terrain grid generation
+//
+// Renders a 20-column x 10-row grid of terrain cells, each 30x60 px.
+// The grid is duplicated (columns rendered at x and x+600) so the
+// animateTransform scroll from 0 to -600 loops seamlessly.
 // ---------------------------------------------------------------------------
 
-fn _build_terrain_strips(seed: u256) -> ByteArray {
+fn _build_terrain_grid(seed: felt252) -> ByteArray {
     let mut result: ByteArray = "";
+    // Iterate col-major: col 0-19, row 0-9 per col.
     let mut i: u32 = 0;
     loop {
-        if i >= 8 {
+        if i >= 200 {
             break;
         }
-        let byte_val: u32 = ((seed / _pow256(i * 4)) % 256).try_into().unwrap_or(0);
-        let color = _terrain_color(byte_val % 10);
+        let col: u32 = i / 10;
+        let row: u32 = i % 10;
 
-        let x1 = i * 75;
-        let x2 = x1 + 600;
-        let x1s = format!("{}", x1);
+        let x: u32 = col * 30;
+        let y: u32 = row * 60;
+        let x2: u32 = x + 600;
+
+        let elevation = terrain_elevation(seed, col, row);
+        let moisture = terrain_moisture(seed, col, row);
+        let terrain_type = classify_terrain(elevation, moisture, row);
+        let color = _terrain_color(terrain_type);
+
+        let xs = format!("{}", x);
+        let ys = format!("{}", y);
         let x2s = format!("{}", x2);
 
-        result +=
-            "<rect x='" + x1s + "' y='0' width='75' height='600' fill='" + color.clone() + "'/>";
-        result +=
-            "<rect x='" + x2s + "' y='0' width='75' height='600' fill='" + color + "'/>";
+        result += "<rect x='"
+            + xs
+            + "' y='"
+            + ys.clone()
+            + "' width='30' height='60' fill='"
+            + color.clone()
+            + "'/>";
+        result += "<rect x='"
+            + x2s
+            + "' y='"
+            + ys
+            + "' width='30' height='60' fill='"
+            + color
+            + "'/>";
 
         i += 1;
     };
     result
 }
 
-fn _pow256(n: u32) -> u256 {
-    let mut r: u256 = 1;
-    let mut i: u32 = 0;
-    loop {
-        if i >= n {
-            break;
-        }
-        r *= 256;
-        i += 1;
-    };
-    r
-}
-
 fn _terrain_color(idx: u32) -> ByteArray {
     match idx {
-        0 => "#1a5f7a",
-        1 => "#2a85a0",
-        2 => "#4a7c39",
-        3 => "#1e4d1a",
-        4 => "#c8972a",
-        5 => "#7a6a5a",
-        6 => "#5a5a6a",
-        7 => "#dde8ec",
-        8 => "#c8b87a",
-        _ => "#2a7a5a",
+        0 => "#1a5f7a", // deep ocean
+        1 => "#2a85a0", // shallow ocean
+        2 => "#4a7c39", // grassland
+        3 => "#1e4d1a", // forest
+        4 => "#c8972a", // desert
+        5 => "#7a6a5a", // highland
+        6 => "#5a4a3a", // mountain
+        7 => "#dde8ec", // snow
+        8 => "#c8b87a", // beach
+        _ => "#8a7a50", // scrubland (idx 9)
     }
 }
 

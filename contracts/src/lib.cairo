@@ -39,4 +39,5 @@ pub mod constants {
 pub mod libs {
     pub mod game;
     pub mod settings;
+    pub mod terrain;
 }

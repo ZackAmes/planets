@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: MIT
 
-/// Building types. Discriminant maps directly to the u8 stored in Building.building_type.
+/// Building types.
+/// Discriminant maps 1:1 to the u8 stored in Building.building_type.
+///   0 = TownCenter  (auto-placed at colony founding, sets building limit)
+///   1 = WaterWell   (water / worker / epoch — terrain: shallow > beach > scrubland)
+///   2 = IronMine    (iron  / worker / epoch — terrain: mountain > highland)
+///   3 = House       (no workers, adds 20 to max_population)
+///   4 = Barracks    (defense / worker / epoch — terrain: mountain > highland)
 #[derive(Introspect, Drop, Serde, Copy, PartialEq)]
 pub enum BuildingType {
-    Farm,     // 0
-    Mine,     // 1
-    Barracks, // 2
-    Workshop, // 3
+    TownCenter,
+    WaterWell,
+    IronMine,
+    House,
+    Barracks,
 }
 
-/// A building placed at a specific lat/lon on a planet.
+/// A building placed at a specific lon/lat on a planet.
 ///
-/// Coordinates are in tenths of a degree:
-///   lon 0–3599  (0.1° steps, full circle)
-///   lat 0–1799  (0.1° steps, 0 = north pole, 900 = equator)
+/// Coordinates (tenths of a degree):
+///   lon 0-3599   lat 0-1799
 ///
-/// SVG canvas mapping (600×600 px):  x = lon / 6,  y = lat / 3
+/// SVG canvas mapping (600x600 px):  x = lon/6,  y = lat/3
 ///
-/// terrain_bonus    : 0-100 — suitability of the terrain for this building type.
-/// output_per_epoch : pre-computed resource output per 600-second epoch.
-///                    Formula: base × (50 + terrain_bonus) / 100
-///
-/// building_type: 0=Farm, 1=Mine, 2=Barracks, 3=Workshop
+/// workers              : colonists currently assigned to this building.
+/// max_workers          : capacity for this type (0 for TC and House).
+/// output_per_worker_epoch: terrain-adjusted output per assigned worker per epoch.
+///   Formula: base * (50 + terrain_bonus) / 100
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct Building {
@@ -34,10 +39,12 @@ pub struct Building {
     pub building_type: u8,
     pub exists: bool,
     pub terrain_bonus: u8,
-    pub output_per_epoch: u32,
+    pub workers: u8,
+    pub max_workers: u8,
+    pub output_per_worker_epoch: u32,
 }
 
-/// Total building count on a planet (for enumeration).
+/// Total building count for a planet (used for enumeration).
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct PlanetBuildingCount {
@@ -46,7 +53,7 @@ pub struct PlanetBuildingCount {
     pub count: u32,
 }
 
-/// Maps sequential index → building location for a planet.
+/// Maps sequential index to building location for a planet.
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct PlanetBuildingEntry {
