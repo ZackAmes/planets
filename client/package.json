@@ -14,7 +14,8 @@
     "simplex-noise": "^4.0.3",
     "starknet": "^9.4.2",
     "svelte": "^5.0.0",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "vite-plugin-mkcert": "^1.17.10"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

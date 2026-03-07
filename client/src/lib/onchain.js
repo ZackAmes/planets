@@ -6,22 +6,23 @@
 
 import { shortString } from 'starknet'
 import { CONFIG } from './config.js'
-import { prepareMintGame } from './contracts.js'
+import { mintCall, getProvider, fetchPlayerPlanets } from './contracts.js'
 
 // ---------------------------------------------------------------------------
-// game_token_systems — mint
+// denshokan — mint
 // ---------------------------------------------------------------------------
 
 /**
- * Mint a game token for the player.
- * Returns { transaction_hash, tokenId } where tokenId is the planet ID.
- *
- * mint_game is view (dispatches externally to the token contract), so we
- * can sim-call it first to get the deterministic token ID, then execute.
+ * Mint a game token via the Denshokan contract.
+ * Waits for the tx, then fetches the player's planet list to get the new tokenId.
+ * Returns { transaction_hash, tokenId }.
  */
 export async function mintGame(account, playerName) {
-  const { call, tokenId } = await prepareMintGame(account, playerName)
+  const call = mintCall(account.address, playerName)
   const { transaction_hash } = await account.execute([call])
+  await waitForTx(getProvider(), transaction_hash)
+  const ids = await fetchPlayerPlanets(account.address)
+  const tokenId = ids.length > 0 ? ids[ids.length - 1] : null
   return { transaction_hash, tokenId }
 }
 

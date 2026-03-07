@@ -4,8 +4,9 @@
  * For writes, use the populate() method with account.execute.
  */
 
-import { Contract, RpcProvider, CairoOption, CairoOptionVariant, shortString } from 'starknet'
+import { Contract, RpcProvider, CallData, CairoOption, CairoOptionVariant, shortString } from 'starknet'
 import manifest from '../../../contracts/manifest_sepolia.json'
+import denshokan from '../../denshokan.json'
 import { CONFIG } from './config.js'
 
 // ---------------------------------------------------------------------------
@@ -48,54 +49,38 @@ export function rendererContract(providerOrAccount) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// None helper — CairoOption::None for any type
-// ---------------------------------------------------------------------------
-
-const None = new CairoOption(CairoOptionVariant.None)
+const DENSHOKAN_ADDRESS = denshokan[0].address
 
 // ---------------------------------------------------------------------------
-// mint_game
-//
-// Returns { call, tokenId }:
-//   call    — populated Call object ready for account.execute
-//   tokenId — BigInt token ID (from view simulation, deterministic)
-//
-// mint_game is view (self: @ContractState) and dispatches to the token
-// contract externally, so we can sim-call it to get the token ID before
-// executing the transaction.
+// mintCall — raw Call for denshokan.mint (no ABI parsing needed)
 // ---------------------------------------------------------------------------
 
-export async function prepareMintGame(account, playerName) {
+const none = () => new CairoOption(CairoOptionVariant.None)
+const some = (val) => new CairoOption(CairoOptionVariant.Some, val)
+
+export function mintCall(playerAddress, playerName) {
   const nameFelt = playerName ? shortString.encodeShortString(playerName) : null
-  const salt = Math.floor(Date.now() / 1000) % 65536  // u16, changes once/sec
-
-  const args = [
-    nameFelt ? new CairoOption(CairoOptionVariant.Some, nameFelt) : None, // player_name
-    None, // settings_id
-    None, // start
-    None, // end
-    None, // objective_id
-    None, // context
-    None, // client_url
-    None, // renderer_address
-    None, // skills_address
-    account.address,  // to
-    false,            // soulbound
-    false,            // paymaster
-    salt,             // salt
-    0,                // metadata
-  ]
-
-  // View call to get the deterministic token ID
-  const contract = gameTokenContract(getProvider())
-  const tokenIdFelt = await contract.mint_game(...args)
-  const tokenId = BigInt(tokenIdFelt)
-
-  // Build the Call for account.execute
-  const call = gameTokenContract(account).populate('mint_game', args)
-
-  return { call, tokenId, salt }
+  return {
+    contractAddress: DENSHOKAN_ADDRESS,
+    entrypoint: 'mint',
+    calldata: CallData.compile([
+      CONFIG.gameTokenSystemsAddress,     // game_address
+      nameFelt ? some(nameFelt) : none(), // player_name
+      none(),                             // settings_id
+      none(),                             // start
+      none(),                             // end
+      none(),                             // objective_id
+      none(),                             // context
+      none(),                             // client_url
+      none(),                             // renderer_address
+      none(),                             // skills_address
+      playerAddress,                      // to
+      false,                              // soulbound
+      false,                              // paymaster
+      0,                                  // salt
+      0,                                  // metadata
+    ]),
+  }
 }
 
 // ---------------------------------------------------------------------------
