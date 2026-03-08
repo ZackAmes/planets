@@ -40,10 +40,19 @@ export function upgradeBuildingCost(level) {
   }
 }
 
-// Terrain type indices (match terrain.cairo)
+// Terrain type indices (match terrain.cairo) — simplified 7-biome set
+// Types 0, 5, 9 are no longer generated but kept for array alignment
 const TERRAIN_NAMES = [
-  'Deep Ocean', 'Shallow Ocean', 'Grassland', 'Forest', 'Desert',
-  'Highland', 'Mountain', 'Snow', 'Beach', 'Scrubland',
+  'Deep Ocean',  // 0 (unused)
+  'Ocean',       // 1
+  'Plains',      // 2 (merged grassland + scrubland)
+  'Forest',      // 3
+  'Desert',      // 4
+  'Highland',    // 5 (unused — merged into mountain)
+  'Mountain',    // 6 (merged highland + mountain)
+  'Snow',        // 7
+  'Beach',       // 8
+  'Scrubland',   // 9 (unused — merged into plains)
 ]
 
 // Grid dimensions — must match terrain.cairo constants
@@ -63,23 +72,23 @@ function cellNoise(seed, col, row, period) {
   return Number(BigInt(h) % 256n)
 }
 
+/** Row-only 1D noise — mirrors terrain.cairo's _row_noise. */
+function rowNoise(seed, row) {
+  const h = hash.computePoseidonHashOnElements([seed, BigInt(row)])
+  return Number(BigInt(h) % 256n)
+}
+
 function gridElevation(seed, col, row) {
-  const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
-  const cRow = Math.floor(row / 2)
-  const mCol = Math.floor(col * 10 / TERRAIN_GRID_COLS)
-  const eCoarse = cellNoise(seed,        cCol, cRow, 5)
-  const eMid    = cellNoise(seed + 3n,   mCol, row,  10)
-  const eFine   = cellNoise(seed + 1n,   col,  row,  TERRAIN_GRID_COLS)
-  return Math.floor((eCoarse * 5 + eMid * 3 + eFine * 2) / 10)
+  const eLat  = rowNoise(seed, Math.floor(row / 2))          // row-only coarse
+  const eMid  = cellNoise(seed + 3n, col, row, 5)            // 2D regional
+  const eFine = cellNoise(seed + 1n, col, row, TERRAIN_GRID_COLS) // 2D fine
+  return Math.floor((eLat * 5 + eMid * 3 + eFine * 2) / 10)
 }
 
 function gridMoisture(seed, col, row) {
-  const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
-  const cRow = Math.floor(row / 2)
-  const mCol = Math.floor(col * 10 / TERRAIN_GRID_COLS)
-  const mCoarse = cellNoise(seed + 7n,  cCol, cRow, 5)
-  const mMid    = cellNoise(seed + 11n, mCol, row,  10)
-  const mFine   = cellNoise(seed + 13n, col,  row,  TERRAIN_GRID_COLS)
+  const mCoarse = cellNoise(seed + 7n,  col, Math.floor(row / 2), 10)
+  const mMid    = cellNoise(seed + 11n, col, row, 5)
+  const mFine   = cellNoise(seed + 13n, col, row, TERRAIN_GRID_COLS)
   return Math.floor((mCoarse * 5 + mMid * 3 + mFine * 2) / 10)
 }
 
@@ -90,7 +99,6 @@ function classifyTerrainInt(elevation, moisture, row) {
                    : 0
   const elev = Math.min(255, elevation + polarBoost)
 
-  // Temperature factor by latitude: 100 = equatorial, 20 = polar.
   const tempFactor = (row === 0 || row === 9) ? 20
                    : (row === 1 || row === 8) ? 40
                    : (row === 2 || row === 7) ? 65
@@ -98,16 +106,14 @@ function classifyTerrainInt(elevation, moisture, row) {
                    : 100
   const adjMoisture = Math.floor(moisture * tempFactor / 100)
 
-  if (elev < 64)  return 0  // deep ocean
-  if (elev < 82)  return 1  // shallow ocean
-  if (elev < 97)  return 8  // beach
-  if (elev < 192) {
-    if (adjMoisture < 64)  return 4  // desert
-    if (adjMoisture < 102) return 9  // scrubland
-    if (adjMoisture < 140) return elev > 153 ? 5 : 2  // highland or grassland
-    return 3  // forest
+  if (elev < 85)  return 1  // ocean
+  if (elev < 100) return 8  // beach
+  if (elev < 200) {
+    if (adjMoisture < 70)  return 4  // desert
+    if (adjMoisture < 160) return 2  // plains
+    return 3                         // forest
   }
-  if (elev < 222) return 6  // mountain
+  if (elev < 235) return 6  // mountain
   return 7  // snow
 }
 

@@ -406,12 +406,15 @@
   <div class="ui">
     <div class="header">
       <span class="planet-label">PLANETS</span>
+      {#if planetName && (phase === 'managing' || phase === 'founding' || phase === 'won' || phase === 'gameover')}
+        <span class="planet-name-hdr">{planetName}</span>
+      {/if}
       {#if address}
         <span class="addr">{address.slice(0, 6)}…{address.slice(-4)}</span>
         {#if planet && (phase === 'managing' || phase === 'founding')}
           <button class="btn-sm" onclick={handleManualRefresh} disabled={txPending} title="Refresh state">⟳</button>
         {/if}
-        <button class="btn-sm" onclick={handleDisconnect}>Disconnect</button>
+        <button class="btn-sm" onclick={handleDisconnect}>×</button>
       {/if}
     </div>
 
@@ -461,6 +464,10 @@
       <div class="pop-bar">
         <span class="pop-label">Pop</span>
         <span class="pop-value">{planet.population}</span>
+        {#if assigned != null && unassigned != null}
+          <span class="pop-split">{assigned.count}A · {unassigned.count}F</span>
+        {/if}
+        <span class="pop-sep">|</span>
         <span class="pop-label">Turn</span>
         <span class="pop-value">{planet.actionCount}</span>
       </div>
@@ -525,8 +532,9 @@
     font-size: 0.72rem;
   }
 
-  .planet-label { color: #445566; letter-spacing: 0.12em; flex: 1; }
-  .addr { color: #6ab4ff; font-size: 0.7rem; }
+  .planet-label { color: #445566; letter-spacing: 0.12em; }
+  .planet-name-hdr { color: #6ab4ff; font-size: 0.7rem; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; letter-spacing: 0.05em; }
+  .addr { color: #445566; font-size: 0.65rem; }
 
   .status {
     background: rgba(20, 40, 20, 0.9);
@@ -581,8 +589,10 @@
     font-family: monospace;
   }
 
-  .pop-label { font-size: 0.65rem; color: #445566; text-transform: uppercase; }
-  .pop-value { font-size: 0.85rem; color: #6ab4ff; font-weight: bold; margin-right: 0.5rem; }
+  .pop-label { font-size: 0.62rem; color: #445566; text-transform: uppercase; }
+  .pop-value { font-size: 0.82rem; color: #6ab4ff; font-weight: bold; }
+  .pop-split { font-size: 0.6rem; color: #445566; }
+  .pop-sep { font-size: 0.65rem; color: #2a3a4a; margin: 0 0.15rem; }
 
   .btn-primary {
     background: #1a3a5a;
