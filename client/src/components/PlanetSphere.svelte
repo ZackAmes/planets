@@ -1,5 +1,6 @@
 <script>
   import { T, useTask } from '@threlte/core'
+  import { HTML } from '@threlte/extras'
   import * as THREE from 'three'
   import { generatePlanetTexture } from '../lib/planetGen.js'
   import { PLANET_WIDTH, PLANET_HEIGHT, lonLatToLocal, uvToLonLat, BUILDING_INFO } from '../lib/gameLogic.js'
@@ -12,8 +13,10 @@
     colonyMarker = null,      // [x,y,z] in local sphere space
     buildings = [],           // [{ lon, lat, buildingType }]
     invader = null,           // { active, lon, lat } | null
+    selectedBuilding = null,  // { lon, lat } of selected building
     onlocationpick = null,    // (col, row, lon, lat, localPos) => void
     onbuildpick = null,       // (lon, lat, localPos) => void
+    onbuildingclick = null,   // (lon, lat) => void
   } = $props()
 
   // Capture seeds once at mount — texture is static for the lifetime of this component.
@@ -54,12 +57,23 @@
 
   // Precompute building marker positions in local sphere space
   const buildingMarkers = $derived(
-    buildings.map((b) => ({
-      ...b,
-      pos: lonLatToLocal(b.lon, b.lat, 8.15),
-      color: BUILDING_INFO[b.buildingType]?.color ?? '#ffffff',
-    }))
+    buildings.map((b) => {
+      const isSelected = selectedBuilding && b.lon === selectedBuilding.lon && b.lat === selectedBuilding.lat
+      return {
+        ...b,
+        pos: lonLatToLocal(b.lon, b.lat, 8.15),
+        color: BUILDING_INFO[b.buildingType]?.color ?? '#ffffff',
+        isSelected,
+      }
+    })
   )
+  
+  function handleBuildingClick(event, b) {
+    event.stopPropagation()
+    if (onbuildingclick) {
+      onbuildingclick(b.lon, b.lat)
+    }
+  }
 
   const invaderPos = $derived(
     invader?.active ? lonLatToLocal(invader.lon, invader.lat, 8.15) : null
@@ -91,15 +105,28 @@
 
   <!-- Building markers -->
   {#each buildingMarkers as b}
-    <T.Mesh position={b.pos}>
-      <T.SphereGeometry args={[0.18, 6, 6]} />
+    <T.Mesh position={b.pos} onclick={(e) => handleBuildingClick(e, b)}>
+      <T.SphereGeometry args={[b.isSelected ? 0.24 : 0.18, 8, 8]} />
       <T.MeshStandardMaterial
         color={b.color}
         emissive={b.color}
-        emissiveIntensity={0.6}
+        emissiveIntensity={b.isSelected ? 1.2 : 0.6}
         roughness={0.4}
       />
     </T.Mesh>
+    
+    <!-- Building label -->
+    <HTML
+      position={[b.pos[0] * 1.15, b.pos[1] * 1.15, b.pos[2] * 1.15]}
+      center
+      distanceFactor={10}
+      occlude={false}
+      zIndexRange={[100, 0]}
+    >
+      <div class="building-label" class:selected={b.isSelected}>
+        {BUILDING_INFO[b.buildingType]?.name ?? '?'}
+      </div>
+    </HTML>
   {/each}
 
   <!-- Invader marker -->
@@ -127,3 +154,28 @@
     depthWrite={false}
   />
 </T.Mesh>
+
+<style>
+  :global(.building-label) {
+    background: rgba(5, 5, 20, 0.85);
+    border: 1px solid #1a2a3a;
+    border-radius: 4px;
+    padding: 0.2rem 0.4rem;
+    font-family: monospace;
+    font-size: 0.65rem;
+    color: #aaddff;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  :global(.building-label.selected) {
+    background: rgba(10, 30, 50, 0.95);
+    border-color: #6ab4ff;
+    color: #6ab4ff;
+    font-weight: bold;
+  }
+</style>

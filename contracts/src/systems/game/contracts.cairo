@@ -56,8 +56,8 @@ mod game_systems {
     const STARTING_IRON: u32 = 200;
     const STARTING_DEFENSE: u32 = 10;
 
-    const EPOCH_SECONDS: u64 = 600;
-    const MAX_EPOCHS: u64 = 144;
+    const EPOCH_SECONDS: u64 = 120;  // 2 minutes per epoch
+    const MAX_EPOCHS: u64 = 720;      // cap at 24 hours
 
     // Building iron costs
     const WATER_WELL_COST: u32 = 50;
@@ -108,8 +108,8 @@ mod game_systems {
     const WEAPON_POWER: u32 = 5;
     const ARMOR_POWER: u32 = 3;
 
-    // Threat
-    const THREAT_CHECK_INTERVAL: u64 = 600;
+    // Threat check every 2 minutes (1 epoch)
+    const THREAT_CHECK_INTERVAL: u64 = 120;
     const PASSIVE_DAMAGE_DIV: u32 = 10;
 
     // Building / upgrade / training timers (seconds)
@@ -865,35 +865,27 @@ mod game_systems {
 
         if available >= water_consumed {
             resources.water = available - water_consumed;
-
-            let colony: Colony = world.read_model(planet_id);
-            let max_pop: u32 = colony.tc_level.into() * POP_PER_TC_LEVEL;
-            if resources.water > planet.population * 5 && planet.population < max_pop {
-                let raw_growth = planet.population / 10;
-                let growth: u32 = if raw_growth < 1 { 1 } else if raw_growth > 3 { 3 } else { raw_growth };
-                let to_spawn: u32 = if planet.population + growth > max_pop {
-                    max_pop - planet.population
-                } else {
-                    growth
-                };
-                let mut j: u32 = 0;
-                loop {
-                    if j >= to_spawn { break; }
-                    _spawn_colonist(ref world, planet_id);
-                    j += 1;
-                };
-                planet.population += to_spawn;
-            }
+            // Natural population growth removed - only Houses spawn colonists
         } else {
+            // Water shortage: kill colonists
             resources.water = 0;
-            let deaths_per_epoch: u32 = if planet.population / 10 < 1 { 1 } else { planet.population / 10 };
-            let total_deaths: u32 = if deaths_per_epoch * epochs / 2 > planet.population {
+            let shortage = water_consumed - available;
+            // Kill 1 colonist per 5 water shortage, minimum 1 per epoch
+            let deaths_per_epoch: u32 = if shortage / 5 < 1 { 1 } else { shortage / 5 };
+            let total_deaths: u32 = deaths_per_epoch * epochs;
+            let actual_deaths: u32 = if total_deaths > planet.population {
                 planet.population
             } else {
-                deaths_per_epoch * epochs / 2
+                total_deaths
             };
-            _kill_random(ref world, planet_id, total_deaths, planet.seed, planet.action_count, now);
-            planet.population = if planet.population > total_deaths { planet.population - total_deaths } else { 0 };
+            if actual_deaths > 0 {
+                _kill_random(ref world, planet_id, actual_deaths, planet.seed, planet.action_count, now);
+                planet.population = if planet.population > actual_deaths { 
+                    planet.population - actual_deaths 
+                } else { 
+                    0 
+                };
+            }
         }
 
         // Threat check

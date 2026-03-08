@@ -8,8 +8,8 @@ import { hash } from 'starknet'
 export const PLANET_WIDTH  = 50
 export const PLANET_HEIGHT = 40
 
-export const EPOCH_SECONDS = 600   // 10 minutes per epoch
-export const MAX_EPOCHS    = 144   // cap at 24 hours
+export const EPOCH_SECONDS = 120   // 2 minutes per epoch
+export const MAX_EPOCHS    = 720   // cap at 24 hours
 
 // Building type constants (must match BuildingType enum discriminants in Cairo)
 export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOUSE: 3, BARRACKS: 4, URANIUM_MINE: 5, SPACEPORT: 6, WORKSHOP: 7, CANNON: 8 }

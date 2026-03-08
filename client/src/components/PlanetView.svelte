@@ -11,8 +11,10 @@
     colonyMarker = null,
     buildings = [],
     invader = null,
+    selectedBuilding = null,
     onlocationpick = null,
     onbuildpick = null,
+    onbuildingclick = null,
   } = $props()
 
   interactivity()
@@ -38,6 +40,8 @@
   {colonyMarker}
   {buildings}
   {invader}
+  {selectedBuilding}
   {onlocationpick}
   {onbuildpick}
+  {onbuildingclick}
 />
