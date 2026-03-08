@@ -10,6 +10,7 @@
     canBuild = false,         // building placement mode
     colonyMarker = null,      // [x,y,z] in local sphere space
     buildings = [],           // [{ lon, lat, buildingType }]
+    invader = null,           // { active, lon, lat } | null
     onlocationpick = null,    // (col, row, lon, lat, localPos) => void
     onbuildpick = null,       // (lon, lat, localPos) => void
   } = $props()
@@ -56,6 +57,10 @@
       color: BUILDING_INFO[b.buildingType]?.color ?? '#ffffff',
     }))
   )
+
+  const invaderPos = $derived(
+    invader?.active ? lonLatToLocal(invader.lon, invader.lat, 8.15) : null
+  )
 </script>
 
 <!-- Main planet sphere -->
@@ -93,6 +98,19 @@
       />
     </T.Mesh>
   {/each}
+
+  <!-- Invader marker -->
+  {#if invaderPos}
+    <T.Mesh position={invaderPos}>
+      <T.SphereGeometry args={[0.32, 8, 8]} />
+      <T.MeshStandardMaterial
+        color="#ff2222"
+        emissive="#ff0000"
+        emissiveIntensity={1.4}
+        roughness={0.2}
+      />
+    </T.Mesh>
+  {/if}
 </T.Mesh>
 
 <!-- Atmosphere glow -->

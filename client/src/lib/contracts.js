@@ -250,6 +250,35 @@ export async function fetchColonistsUnassigned(planetId) {
   }
 }
 
+export async function fetchInvader(planetId) {
+  try {
+    const contract = rendererContract()
+    const inv = await contract.get_invader(BigInt(planetId))
+    return {
+      active: Boolean(inv.active),
+      strength: Number(inv.strength),
+      lon: Number(inv.lon),
+      lat: Number(inv.lat),
+      spawnedAt: Number(BigInt(inv.spawned_at)),
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function fetchGear(planetId) {
+  try {
+    const contract = rendererContract()
+    const g = await contract.get_gear(BigInt(planetId))
+    return {
+      weapons: Number(g.weapons),
+      armor: Number(g.armor),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // fetchPlayerPlanets
 //

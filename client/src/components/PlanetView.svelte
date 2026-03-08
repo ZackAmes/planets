@@ -9,6 +9,7 @@
     canBuild = false,
     colonyMarker = null,
     buildings = [],
+    invader = null,
     onlocationpick = null,
     onbuildpick = null,
   } = $props()
@@ -34,6 +35,7 @@
   {canBuild}
   {colonyMarker}
   {buildings}
+  {invader}
   {onlocationpick}
   {onbuildpick}
 />

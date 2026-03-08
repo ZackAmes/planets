@@ -4,10 +4,9 @@
   import PlanetView from './components/PlanetView.svelte'
   import ColonyPanel from './components/ColonyPanel.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, waitForTx } from './lib/onchain.js'
-  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings, fetchResources, fetchColonistsAssigned, fetchColonistsUnassigned } from './lib/contracts.js'
+  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, craftGear, fightInvader, waitForTx } from './lib/onchain.js'
+  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings, fetchResources, fetchColonistsAssigned, fetchColonistsUnassigned, fetchInvader, fetchGear } from './lib/contracts.js'
   import { getProvider } from './lib/contracts.js'
-  import { terrainAt, EPOCH_SECONDS } from './lib/gameLogic.js'
 
   // ---------------------------------------------------------------------------
   // Wallet state
@@ -38,6 +37,9 @@
   let pendingLocation = $state(null)  // { col, row }
   let pendingMarker   = $state(null)  // [x, y, z]
   let confirmedMarker = $state(null)  // [x, y, z]
+
+  let invader  = $state(null) // { active, strength, lon, lat, spawnedAt }
+  let gear     = $state(null) // { weapons, armor }
 
   let buildings        = $state([])
   let buildMode        = $state(false)
@@ -96,23 +98,27 @@
 
   async function refreshColonyState(id) {
     const pid = id ?? planetId
-    const [b, r, ca, cu] = await Promise.all([
+    const [b, r, ca, cu, inv, g] = await Promise.all([
       fetchBuildings(pid),
       fetchResources(pid),
       fetchColonistsAssigned(pid),
       fetchColonistsUnassigned(pid),
+      fetchInvader(pid),
+      fetchGear(pid),
     ])
     buildings = b
     resources = r
     assigned = ca
     unassigned = cu
+    invader = inv
+    gear = g
   }
 
   async function handleDisconnect() {
     await disconnect()
     phase = 'connect'; planetId = null; planetName = ''; planet = null
     colony = null; resources = null; assigned = null; unassigned = null
-    confirmedMarker = null; buildings = []
+    invader = null; gear = null; confirmedMarker = null; buildings = []
   }
 
   // ---------------------------------------------------------------------------
@@ -229,6 +235,61 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Upgrade TC
+  // ---------------------------------------------------------------------------
+  async function handleUpgradeTc() {
+    if (!account) return
+    txPending = true
+    txStatus = 'Upgrading Town Center...'
+    try {
+      await upgradeTc(account, planetId)
+      const [c, p] = await Promise.all([fetchColony(planetId), fetchPlanet(planetId)])
+      colony = c
+      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
+      await refreshColonyState(planetId)
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Craft gear
+  // ---------------------------------------------------------------------------
+  async function handleCraftGear(weapons, armor) {
+    if (!account) return
+    txPending = true
+    txStatus = 'Crafting gear...'
+    try {
+      await craftGear(account, planetId, weapons, armor)
+      await refreshColonyState(planetId)
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fight invader
+  // ---------------------------------------------------------------------------
+  async function handleFightInvader(colonists, weapons, armor) {
+    if (!account) return
+    txPending = true
+    txStatus = 'Sending fighters...'
+    try {
+      await fightInvader(account, planetId, colonists, weapons, armor)
+      const [r, p] = await Promise.all([fetchResources(planetId), fetchPlanet(planetId)])
+      resources = r
+      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
+      await refreshColonyState(planetId)
+      if (p?.population === 0) phase = 'gameover'
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
+  // ---------------------------------------------------------------------------
   // Collect (tick)
   // ---------------------------------------------------------------------------
   async function handleCollect() {
@@ -262,6 +323,7 @@
         ? confirmedMarker
         : pendingMarker}
       {buildings}
+      {invader}
       onlocationpick={handleLocationPick}
       onbuildpick={handleBuildPick}
     />
@@ -324,6 +386,8 @@
         {resources}
         {assigned}
         {unassigned}
+        {invader}
+        {gear}
         {buildings}
         {pendingLocation}
         {lastEvents}
@@ -333,6 +397,9 @@
         onconfirm={handleConfirmLocation}
         oncollect={handleCollect}
         onassign={handleAssignWorkers}
+        onupgradetc={handleUpgradeTc}
+        oncraftgear={handleCraftGear}
+        onfight={handleFightInvader}
         onbuildmode={handleBuildMode}
         onbuild={handleConfirmBuild}
       />

@@ -1,5 +1,5 @@
 <script>
-  import { BUILDING_INFO, previewConstruct, formatLonLat } from '../lib/gameLogic.js'
+  import { BUILDING_INFO, previewConstruct, formatLonLat, previewFight, computeRates, WEAPON_COST, ARMOR_COST, TC_UPGRADE_COST } from '../lib/gameLogic.js'
 
   let {
     phase,
@@ -8,6 +8,8 @@
     resources,
     assigned,
     unassigned,
+    invader,
+    gear,
     buildings,
     pendingLocation,
     lastEvents,
@@ -17,9 +19,43 @@
     onconfirm,
     oncollect,
     onassign,
+    onupgradetc,
+    oncraftgear,
+    onfight,
     onbuildmode,
     onbuild,
   } = $props()
+
+  // Derived production rates
+  const rates = $derived(computeRates(buildings ?? [], planet?.population ?? 0))
+
+  // TC upgrade
+  const tcLevel = $derived(colony?.tcLevel ?? 1)
+  const tcUpgradeCost = $derived(TC_UPGRADE_COST(tcLevel))
+  const canUpgradeTc = $derived(tcLevel < 5 && (resources?.iron ?? 0) >= tcUpgradeCost)
+
+  // Gear crafting draft
+  let craftWeapons = $state(1)
+  let craftArmor   = $state(0)
+  const craftIronCost = $derived(craftWeapons * WEAPON_COST + craftArmor * ARMOR_COST)
+  const canCraftAfford = $derived((resources?.iron ?? 0) >= craftIronCost && craftIronCost > 0)
+
+  // Fight draft
+  let fightColonists = $state(1)
+  let fightWeapons   = $state(0)
+  let fightArmor     = $state(0)
+  const fightPreview = $derived(
+    invader?.active
+      ? previewFight(invader, fightColonists, fightWeapons, fightArmor)
+      : null
+  )
+  const canFight = $derived(
+    invader?.active &&
+    fightColonists > 0 &&
+    fightColonists <= (unassigned?.count ?? 0) &&
+    fightWeapons <= (gear?.weapons ?? 0) &&
+    fightArmor <= (gear?.armor ?? 0)
+  )
 
   let selectedBuildType = $state(null)
 
@@ -83,20 +119,30 @@
       <div class="stat">
         <span class="label">Water</span>
         <span class="value blue">{resources?.water ?? 0}</span>
+        <span class="rate" class:negative={rates.netWater < 0}>{rates.netWater >= 0 ? '+' : ''}{rates.netWater}/ep</span>
       </div>
       <div class="stat">
         <span class="label">Iron</span>
         <span class="value gray">{resources?.iron ?? 0}</span>
+        <span class="rate positive">+{rates.ironRate}/ep</span>
       </div>
       <div class="stat">
         <span class="label">Defense</span>
         <span class="value green">{resources?.defense ?? 0}</span>
+        <span class="rate positive">+{rates.defenseRate}/ep</span>
       </div>
       <div class="stat">
-        <span class="label">Population</span>
-        <span class="value">{planet?.population ?? 0} / {(colony?.tcLevel ?? 1) * 10}</span>
+        <span class="label">Pop / Cap</span>
+        <span class="value">{planet?.population ?? 0} / {tcLevel * 10}</span>
+        <span class="rate dim">TC lv{tcLevel}</span>
       </div>
     </div>
+
+    <!-- TC upgrade -->
+    <button class="tc-btn" onclick={onupgradetc}
+      disabled={!canUpgradeTc || disabled || tcLevel >= 5}>
+      {tcLevel >= 5 ? 'TC Max Level' : `Upgrade TC lv${tcLevel}→${tcLevel + 1} (${tcUpgradeCost} iron)`}
+    </button>
 
     <!-- Colonists -->
     <div class="colonists">
@@ -113,6 +159,43 @@
     <button class="collect-btn" onclick={oncollect} {disabled}>
       {disabled ? 'Working…' : 'Collect Resources'}
     </button>
+
+    <!-- Invader alert -->
+    {#if invader?.active}
+      <div class="invader-panel">
+        <h3 class="threat-title">INVADERS!</h3>
+        <p class="dim">Strength: {invader.strength} · draining {Math.max(1, Math.floor(invader.strength / 10))}/epoch</p>
+        <div class="fight-row">
+          <span class="fight-label">Colonists</span>
+          <button class="adj" onclick={() => fightColonists = Math.max(1, fightColonists - 1)} disabled={disabled}>-</button>
+          <span class="wcount">{fightColonists}</span>
+          <button class="adj" onclick={() => fightColonists = Math.min(unassigned?.count ?? 0, fightColonists + 1)} disabled={disabled}>+</button>
+        </div>
+        <div class="fight-row">
+          <span class="fight-label">Weapons</span>
+          <button class="adj" onclick={() => fightWeapons = Math.max(0, fightWeapons - 1)} disabled={disabled}>-</button>
+          <span class="wcount">{fightWeapons}/{gear?.weapons ?? 0}</span>
+          <button class="adj" onclick={() => fightWeapons = Math.min(gear?.weapons ?? 0, fightWeapons + 1)} disabled={disabled}>+</button>
+        </div>
+        <div class="fight-row">
+          <span class="fight-label">Armor</span>
+          <button class="adj" onclick={() => fightArmor = Math.max(0, fightArmor - 1)} disabled={disabled}>-</button>
+          <span class="wcount">{fightArmor}/{gear?.armor ?? 0}</span>
+          <button class="adj" onclick={() => fightArmor = Math.min(gear?.armor ?? 0, fightArmor + 1)} disabled={disabled}>+</button>
+        </div>
+        {#if fightPreview}
+          <p class="fight-preview" class:win={fightPreview.willWin} class:lose={!fightPreview.willWin}>
+            Power ~{fightPreview.fighterPower} (±25%) vs {fightPreview.invaderStrength}
+            · ~{fightPreview.estimatedCasualties} casualties
+            · {fightPreview.willWin ? 'LIKELY WIN' : 'LIKELY LOSE'}
+          </p>
+        {/if}
+        <button class="fight-btn" onclick={() => onfight?.(fightColonists, fightWeapons, fightArmor)}
+          disabled={!canFight || disabled}>
+          {disabled ? 'Fighting…' : 'Send Fighters'}
+        </button>
+      </div>
+    {/if}
 
     <!-- Worker assignment -->
     {#if workerBuildings.length > 0}
@@ -137,13 +220,33 @@
       {/each}
     {/if}
 
+    <!-- Gear crafting -->
+    <div class="divider"></div>
+    <h3>Gear — <span class="gear-stock">W:{gear?.weapons ?? 0} A:{gear?.armor ?? 0}</span></h3>
+    <div class="craft-row">
+      <span class="craft-label">Weapons ({WEAPON_COST} iron)</span>
+      <button class="adj" onclick={() => craftWeapons = Math.max(0, craftWeapons - 1)} {disabled}>-</button>
+      <span class="wcount">{craftWeapons}</span>
+      <button class="adj" onclick={() => craftWeapons++} {disabled}>+</button>
+    </div>
+    <div class="craft-row">
+      <span class="craft-label">Armor ({ARMOR_COST} iron)</span>
+      <button class="adj" onclick={() => craftArmor = Math.max(0, craftArmor - 1)} {disabled}>-</button>
+      <span class="wcount">{craftArmor}</span>
+      <button class="adj" onclick={() => craftArmor++} {disabled}>+</button>
+    </div>
+    <button class="craft-btn" onclick={() => oncraftgear?.(craftWeapons, craftArmor)}
+      disabled={!canCraftAfford || disabled}>
+      Craft ({craftIronCost} iron)
+    </button>
+
     <!-- Build section -->
     <div class="divider"></div>
     {#if !buildMode}
       <h3>Build</h3>
       <div class="build-grid">
         {#each buildableTypes as info}
-          {@const canAfford = (resources?.iron ?? 0) >= info.ironCost}
+          {@const canAfford = (resources?.iron ?? 0) >= info.ironCost && (resources?.water ?? 0) >= info.waterCost}
           <button
             class="build-btn"
             class:affordable={canAfford}
@@ -152,7 +255,9 @@
             {disabled}
           >
             <span class="bname-btn">{info.name}</span>
-            <span class="bcost">{info.ironCost} iron</span>
+            <span class="bcost">
+              {info.ironCost}⛏{info.waterCost > 0 ? ` + ${info.waterCost}💧` : ''}
+            </span>
           </button>
         {/each}
       </div>
@@ -163,7 +268,8 @@
         <div class="build-confirm">
           <p class="dim">{formatLonLat(pendingBuildSite.lon, pendingBuildSite.lat)}</p>
           {#if preview.canBuild}
-            <p class="cost-ok">Cost: {preview.ironCost} iron · +{preview.output}/worker/epoch</p>
+            {@const binfo = BUILDING_INFO[selectedBuildType]}
+            <p class="cost-ok">Cost: {preview.ironCost} iron{(binfo?.waterCost ?? 0) > 0 ? ` + ${binfo.waterCost} water` : ''}{preview.output > 0 ? ` · +${preview.output}/worker/ep` : ' · spawns 1 colonist'}</p>
             <button class="primary" onclick={confirmBuild} {disabled}>
               {disabled ? 'Building…' : 'Confirm Build'}
             </button>
@@ -236,6 +342,10 @@
   .value.blue { color: #44aaff; }
   .value.gray { color: #aaaaaa; }
   .value.green { color: #44ff88; }
+  .rate { font-size: 0.6rem; color: #556; }
+  .rate.positive { color: #5a9; }
+  .rate.negative { color: #e55; }
+  .rate.dim { color: #446; }
 
   .colonists {
     display: flex;
@@ -267,6 +377,22 @@
 
   .collect-btn:hover:not(:disabled) { background: #1f4a38; }
   .collect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .tc-btn {
+    background: #2a2a10;
+    border: 1px solid #5a5a20;
+    border-radius: 6px;
+    color: #ffdd44;
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 0.4rem;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+  }
+
+  .tc-btn:hover:not(:disabled) { background: #3a3a18; }
+  .tc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .divider { border-top: 1px solid #1a2a3a; margin: 0.1rem 0; }
 
@@ -384,4 +510,69 @@
 
   .events { border-top: 1px solid #1a2a3a; padding-top: 0.4rem; display: flex; flex-direction: column; gap: 0.2rem; }
   .event { color: #e8a040; font-size: 0.7rem; margin: 0; }
+
+  /* Invader */
+  .invader-panel {
+    background: rgba(40, 10, 10, 0.7);
+    border: 1px solid #6a1a1a;
+    border-radius: 6px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .threat-title { font-size: 0.8rem; color: #ff5555; text-transform: uppercase; letter-spacing: 0.12em; margin: 0; }
+
+  .fight-row, .craft-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .fight-label, .craft-label { color: #889; font-size: 0.68rem; flex: 1; }
+
+  .fight-preview {
+    font-size: 0.68rem;
+    margin: 0;
+    padding: 0.2rem 0.3rem;
+    border-radius: 3px;
+    background: #0a0a18;
+  }
+
+  .fight-preview.win { color: #6aff9a; }
+  .fight-preview.lose { color: #ff6a6a; }
+
+  .fight-btn {
+    background: #3a1a1a;
+    border: 1px solid #6a2a2a;
+    border-radius: 5px;
+    color: #ff8888;
+    font-family: monospace;
+    font-size: 0.75rem;
+    padding: 0.35rem;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .fight-btn:hover:not(:disabled) { background: #4a2020; }
+  .fight-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Gear */
+  .gear-stock { color: #aac; font-size: 0.68rem; font-weight: normal; }
+
+  .craft-btn {
+    background: #1a2a1a;
+    border: 1px solid #2a5a2a;
+    border-radius: 5px;
+    color: #88cc88;
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 0.3rem;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .craft-btn:hover:not(:disabled) { background: #203520; }
+  .craft-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

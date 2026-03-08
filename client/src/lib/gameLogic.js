@@ -15,12 +15,14 @@ export const MAX_EPOCHS    = 144   // cap at 24 hours
 export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOUSE: 3, BARRACKS: 4 }
 
 export const BUILDING_INFO = [
-  { type: 0, name: 'Town Center', color: '#ffdd44', ironCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Colony hub. Increases population cap per level.' },
-  { type: 1, name: 'Water Well',  color: '#44aaff', ironCost: 50,  maxWorkers: 3, baseOutput: 10, resource: 'water',   description: 'Water / worker / epoch (terrain: coastal > beach > scrubland)' },
-  { type: 2, name: 'Iron Mine',   color: '#aaaaaa', ironCost: 80,  maxWorkers: 3, baseOutput: 8,  resource: 'iron',    description: 'Iron / worker / epoch (terrain: mountain > highland > desert)' },
-  { type: 3, name: 'House',       color: '#44ff88', ironCost: 100, maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Adds 20 to population cap.' },
-  { type: 4, name: 'Barracks',    color: '#4466ff', ironCost: 100, maxWorkers: 3, baseOutput: 8,  resource: 'defense', description: 'Defense / worker / epoch (terrain: mountain > highland)' },
+  { type: 0, name: 'Town Center', color: '#ffdd44', ironCost: 0,   waterCost: 0,  maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Colony hub. Upgrade to raise the population cap.' },
+  { type: 1, name: 'Water Well',  color: '#44aaff', ironCost: 50,  waterCost: 0,  maxWorkers: 3, baseOutput: 10, resource: 'water',   description: 'Water / worker / epoch (terrain: coastal > beach > scrubland)' },
+  { type: 2, name: 'Iron Mine',   color: '#aaaaaa', ironCost: 80,  waterCost: 0,  maxWorkers: 3, baseOutput: 8,  resource: 'iron',    description: 'Iron / worker / epoch (terrain: mountain > highland > desert)' },
+  { type: 3, name: 'House',       color: '#44ff88', ironCost: 60,  waterCost: 50, maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Spawns 1 new colonist immediately (requires pop below cap).' },
+  { type: 4, name: 'Barracks',    color: '#4466ff', ironCost: 100, waterCost: 0,  maxWorkers: 3, baseOutput: 8,  resource: 'defense', description: 'Defense / worker / epoch (terrain: mountain > highland)' },
 ]
+
+export const TC_UPGRADE_COST = (tcLevel) => tcLevel * 100 // iron cost to upgrade TC
 
 // Terrain type indices (match terrain.cairo)
 const TERRAIN_NAMES = [
@@ -167,13 +169,57 @@ export function previewConstruct(resources, buildingType, seedFull, lon, lat) {
   const bonus   = terrainBonus(buildingType, terrain)
   const output  = buildingOutputPerWorkerEpoch(buildingType, bonus)
 
-  const canBuild = (resources?.iron ?? 0) >= info.ironCost
+  const hasIron  = (resources?.iron  ?? 0) >= info.ironCost
+  const hasWater = (resources?.water ?? 0) >= (info.waterCost ?? 0)
+  const canBuild = hasIron && hasWater
+  const reason = !hasIron  ? `Need ${info.ironCost} iron (have ${resources?.iron ?? 0})`
+               : !hasWater ? `Need ${info.waterCost} water (have ${resources?.water ?? 0})`
+               : null
   return {
-    canBuild,
-    reason: canBuild ? null : `Need ${info.ironCost} iron (have ${resources?.iron ?? 0})`,
+    canBuild, reason,
     ironCost: info.ironCost,
     terrain, terrainName: terrainName(terrain), bonus, output,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Production rates (computed client-side from buildings)
+// ---------------------------------------------------------------------------
+
+export function computeRates(buildings, population) {
+  let waterRate = 0, ironRate = 0, defenseRate = 0
+  for (const b of buildings) {
+    const w = b.workers ?? 0
+    if (b.buildingType === 1) waterRate  += w * (b.outputPerWorkerEpoch ?? 0)
+    if (b.buildingType === 2) ironRate   += w * (b.outputPerWorkerEpoch ?? 0)
+    if (b.buildingType === 4) defenseRate += w * (b.outputPerWorkerEpoch ?? 0)
+  }
+  const waterConsumed = population ?? 0
+  return { waterRate, ironRate, defenseRate, waterConsumed, netWater: waterRate - waterConsumed }
+}
+
+// ---------------------------------------------------------------------------
+// Gear / combat
+// ---------------------------------------------------------------------------
+
+export const WEAPON_COST = 20   // iron
+export const ARMOR_COST  = 30   // iron
+
+export const COLONIST_BASE_POWER = 10
+export const WEAPON_POWER = 5
+export const ARMOR_POWER  = 3
+
+/**
+ * Preview fight outcome before sending the tx.
+ * Returns { willWin, fighterPower, invaderStrength, estimatedCasualties }.
+ */
+export function previewFight(invader, colonists, weapons, armor) {
+  const fighterPower = colonists * COLONIST_BASE_POWER + weapons * WEAPON_POWER + armor * ARMOR_POWER
+  const willWin = fighterPower >= invader.strength
+  const estimatedCasualties = willWin
+    ? Math.floor(invader.strength / 20)
+    : Math.min(colonists, Math.floor((invader.strength - fighterPower) / 5) + 1)
+  return { willWin, fighterPower, invaderStrength: invader.strength, estimatedCasualties }
 }
 
 // ---------------------------------------------------------------------------

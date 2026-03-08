@@ -6,6 +6,8 @@ use planets::models::colony::Colony;
 use planets::models::resources::Resources;
 use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
 use planets::models::building::Building;
+use planets::models::invader::Invader;
+use planets::models::gear::Gear;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -20,6 +22,8 @@ pub trait IRendererSystems<T> {
     fn get_colonists_unassigned(self: @T, planet_id: u64) -> ColonistsUnassigned;
     fn get_player_planets(self: @T, player: ContractAddress) -> Array<u64>;
     fn get_planet_buildings(self: @T, planet_id: u64) -> Array<Building>;
+    fn get_invader(self: @T, planet_id: u64) -> Invader;
+    fn get_gear(self: @T, planet_id: u64) -> Gear;
 }
 
 #[dojo::contract]
@@ -31,6 +35,8 @@ mod renderer_systems {
     use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
     use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
     use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
+    use planets::models::invader::Invader;
+    use planets::models::gear::Gear;
     use planets::utils::renderer::encoding::U256BytesUsedTraitImpl;
     use planets::utils::renderer::renderer_utils::{create_metadata, generate_svg};
     use dojo::world::WorldStorage;
@@ -202,6 +208,16 @@ mod renderer_systems {
         fn get_planet_buildings(self: @ContractState, planet_id: u64) -> Array<Building> {
             let world = self.world(@DEFAULT_NS());
             _read_buildings(@world, planet_id)
+        }
+
+        fn get_invader(self: @ContractState, planet_id: u64) -> Invader {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_gear(self: @ContractState, planet_id: u64) -> Gear {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
         }
     }
 

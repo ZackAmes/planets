@@ -22,6 +22,8 @@ pub mod models {
     pub mod colonists;
     pub mod player_planets;
     pub mod building;
+    pub mod invader;
+    pub mod gear;
 }
 
 pub use models::colonists::{

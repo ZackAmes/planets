@@ -115,6 +115,60 @@ export async function assignWorkers(account, planetId, lon, lat, workers) {
 }
 
 /**
+ * Upgrade the Town Center to the next level.
+ */
+export async function upgradeTc(account, planetId) {
+  const { transaction_hash } = await account.execute([
+    {
+      contractAddress: CONFIG.gameSystemsAddress,
+      entrypoint: 'upgrade_tc',
+      calldata: ['0x' + BigInt(planetId).toString(16)],
+    },
+  ])
+  await waitForTx(getProvider(), transaction_hash)
+  return transaction_hash
+}
+
+/**
+ * Craft weapons and/or armor. Costs iron.
+ */
+export async function craftGear(account, planetId, weapons, armor) {
+  const { transaction_hash } = await account.execute([
+    {
+      contractAddress: CONFIG.gameSystemsAddress,
+      entrypoint: 'craft_gear',
+      calldata: [
+        '0x' + BigInt(planetId).toString(16),
+        weapons.toString(),
+        armor.toString(),
+      ],
+    },
+  ])
+  await waitForTx(getProvider(), transaction_hash)
+  return transaction_hash
+}
+
+/**
+ * Fight the active invader with unassigned colonists.
+ */
+export async function fightInvader(account, planetId, colonists, weapons, armor) {
+  const { transaction_hash } = await account.execute([
+    {
+      contractAddress: CONFIG.gameSystemsAddress,
+      entrypoint: 'fight_invader',
+      calldata: [
+        '0x' + BigInt(planetId).toString(16),
+        colonists.toString(),
+        weapons.toString(),
+        armor.toString(),
+      ],
+    },
+  ])
+  await waitForTx(getProvider(), transaction_hash)
+  return transaction_hash
+}
+
+/**
  * Tick resources and collect (no-op if called too soon).
  */
 export async function collect(account, planetId) {

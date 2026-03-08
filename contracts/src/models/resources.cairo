@@ -12,4 +12,6 @@ pub struct Resources {
     pub defense: u32,
     /// Timestamp of the last tick (aligned to epoch boundaries).
     pub last_updated_at: u64,
+    /// Timestamp of the last threat probability roll.
+    pub last_threat_at: u64,
 }
