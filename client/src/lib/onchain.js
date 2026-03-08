@@ -3,7 +3,7 @@
  * populate() uses the ABI to serialize named-object args — no manual calldata arrays.
  */
 
-import { CallData, shortString } from 'starknet'
+import { CairoCustomEnum, CallData, shortString } from 'starknet'
 import { CONFIG } from './config.js'
 import { mintCall, getProvider, fetchDenshokanPlanets, planetContract, gameContract } from './contracts.js'
 
@@ -15,6 +15,17 @@ const VRF_ADDRESS = '0x051fea4450da9d6aee758bdeba88b2f665bcbf549d2c61421aa724e9a
 // denshokan — mint
 // ---------------------------------------------------------------------------
 
+let BUILDING_TYPES = [
+  new CairoCustomEnum({ TownCenter: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: undefined, Barracks: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: undefined, Barracks: undefined, UraniumMine: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: undefined, Barracks: undefined, UraniumMine: undefined, Spaceport: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: undefined, Barracks: undefined, UraniumMine: undefined, Spaceport: undefined, Workshop: {} }),
+  new CairoCustomEnum({ TownCenter: undefined, WaterWell: undefined, IronMine: undefined, House: undefined, Barracks: undefined, UraniumMine: undefined, Spaceport: undefined, Workshop: undefined, Cannon: {} }),
+]
 export async function mintGame(account, playerName) {
   const call = mintCall(account.address, playerName)
   const { transaction_hash } = await account.execute([call])
@@ -73,10 +84,17 @@ export async function foundColony(account, planetId, col, row) {
 }
 
 export async function constructBuilding(account, planetId, lon, lat, buildingType) {
+  console.log(buildingType)
+  let building = BUILDING_TYPES[buildingType]
+  console.log(building)
   const gc = gameContract()
-  const { transaction_hash } = await account.execute(
-    gc.populate('construct_building', { planet_id: planetId, lon, lat, building_type: buildingType })
-  )
+  let args = { planet_id: planetId, lon, lat, building_type: building }
+  console.log(args)
+  const { transaction_hash } = await account.execute({
+    contractAddress: gc.address,
+    entrypoint: 'construct_building',
+    calldata: CallData.compile(args)
+  })
   return transaction_hash
 }
 

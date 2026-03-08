@@ -9,6 +9,8 @@
 ///   4 = Barracks     (defense / worker / epoch)
 ///   5 = UraniumMine  (uranium / worker / epoch — unlocked at TC level 3)
 ///   6 = Spaceport    (no workers, win condition — requires TC level 5)
+///   7 = Workshop     (no workers — required to craft weapons and armor)
+///   8 = Cannon       (defense / worker / epoch + direct damage to active invaders)
 #[derive(Introspect, Drop, Serde, Copy, PartialEq)]
 pub enum BuildingType {
     TownCenter,
@@ -18,13 +20,17 @@ pub enum BuildingType {
     Barracks,
     UraniumMine,
     Spaceport,
+    Workshop,
+    Cannon,
 }
 
 /// A building placed at a specific lon/lat on a planet.
 ///
-/// level: current upgrade level (1–5, capped by tc_level).
+/// level: current upgrade level (1-5, capped by tc_level).
 /// output_per_worker_epoch is recomputed on each upgrade:
 ///   base * (50 + terrain_bonus) / 100 * level_factor / 100
+/// completes_at: timestamp when current operation (construction, upgrade, or barracks training) finishes.
+///   0 = idle/ready. While completes_at > block_timestamp the building cannot be interacted with.
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct Building {
@@ -41,6 +47,7 @@ pub struct Building {
     pub workers: u8,
     pub max_workers: u8,
     pub output_per_worker_epoch: u32,
+    pub completes_at: u64,
 }
 
 /// Total building count for a planet (used for enumeration).

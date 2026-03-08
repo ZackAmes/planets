@@ -6,6 +6,7 @@
 
   let {
     seed = 42,
+    seedFull = null,          // BigInt felt252 — authoritative Poseidon terrain seed
     canPick = false,          // colony founding mode
     canBuild = false,         // building placement mode
     colonyMarker = null,      // [x,y,z] in local sphere space
@@ -15,17 +16,19 @@
     onbuildpick = null,       // (lon, lat, localPos) => void
   } = $props()
 
-  // Capture seed once at mount — texture is static for the lifetime of this component.
+  // Capture seeds once at mount — texture is static for the lifetime of this component.
   // A new seed requires remounting (key={seed} on the parent Canvas).
-  const initialSeed = seed
-  const canvas = generatePlanetTexture(initialSeed)
+  const initialSeed     = seed
+  const initialSeedFull = seedFull
+  const canvas = generatePlanetTexture(initialSeed, initialSeedFull)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
 
   let mesh = $state(null)
 
   useTask((delta) => {
-    if (mesh) mesh.rotation.y += delta * 0.1
+    // Pause rotation while the player is picking a location or placing a building
+    if (mesh && !canPick && !canBuild) mesh.rotation.y += delta * 0.05
   })
 
   function handleClick(event) {

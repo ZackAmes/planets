@@ -5,6 +5,7 @@
 
   let {
     seed = 42,
+    seedFull = null,
     canPick = false,
     canBuild = false,
     colonyMarker = null,
@@ -26,11 +27,12 @@
   />
 </T.PerspectiveCamera>
 
-<T.DirectionalLight position={[30, 15, 20]} intensity={2.2} castShadow />
-<T.AmbientLight intensity={0.08} />
+<T.DirectionalLight position={[12, 10, 22]} intensity={1.6} castShadow />
+<T.AmbientLight intensity={0.45} />
 
 <PlanetSphere
   {seed}
+  {seedFull}
   {canPick}
   {canBuild}
   {colonyMarker}

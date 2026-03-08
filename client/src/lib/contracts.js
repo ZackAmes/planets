@@ -226,6 +226,7 @@ function parseBuildings(arr) {
     workers: Number(b.workers),
     maxWorkers: Number(b.max_workers),
     outputPerWorkerEpoch: Number(b.output_per_worker_epoch),
+    completesAt: Number(BigInt(b.completes_at)),
   }))
 }
 
@@ -251,7 +252,7 @@ export async function fetchFullState(planetId) {
       colony:    parseColony(s.colony),
       resources: parseResources(s.resources),
       assigned:  { count: Number(s.assigned_count) },
-      unassigned:{ count: Number(s.unassigned_count) },
+      unassigned:{ count: Number(s.unassigned_count), totalStrength: Number(s.unassigned_total_strength) },
       buildings: parseBuildings(s.buildings),
       invader:   parseInvader(s.invader),
       gear:      { weapons: Number(s.gear.weapons), armor: Number(s.gear.armor) },

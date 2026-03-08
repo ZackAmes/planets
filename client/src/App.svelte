@@ -7,6 +7,7 @@
   import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, upgradeBuilding, craftGear, fightInvader, waitForTx } from './lib/onchain.js'
   import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchFullState } from './lib/contracts.js'
   import { getProvider } from './lib/contracts.js'
+  import { terrainAt, terrainName } from './lib/gameLogic.js'
 
   // ---------------------------------------------------------------------------
   // Wallet state
@@ -34,9 +35,10 @@
   let assigned  = $state(null)  // { count }
   let unassigned = $state(null) // { count }
 
-  let pendingLocation = $state(null)  // { col, row }
-  let pendingMarker   = $state(null)  // [x, y, z]
-  let confirmedMarker = $state(null)  // [x, y, z]
+  let pendingLocation        = $state(null)  // { col, row }
+  let pendingLocationTerrain = $state(null)  // terrain type at selected colony site
+  let pendingMarker          = $state(null)  // [x, y, z]
+  let confirmedMarker        = $state(null)  // [x, y, z]
 
   let invader  = $state(null) // { active, strength, lon, lat, spawnedAt }
   let gear     = $state(null) // { weapons, armor }
@@ -219,9 +221,10 @@
   // ---------------------------------------------------------------------------
   // Colony founding
   // ---------------------------------------------------------------------------
-  function handleLocationPick(col, row, _lon, _lat, localPos) {
+  function handleLocationPick(col, row, lon, lat, localPos) {
     pendingLocation = { col, row }
     pendingMarker = localPos
+    pendingLocationTerrain = planet?.seedFull ? terrainAt(planet.seedFull, lon, lat) : null
   }
 
   async function handleConfirmLocation() {
@@ -391,6 +394,7 @@
   <Canvas>
     <PlanetView
       seed={displaySeed}
+      seedFull={planet?.seedFull ?? null}
       canPick={phase === 'founding' && !txPending}
       canBuild={phase === 'managing' && buildMode && !txPending}
       colonyMarker={phase === 'managing' || phase === 'gameover'
@@ -483,6 +487,7 @@
         {gear}
         {buildings}
         {pendingLocation}
+        {pendingLocationTerrain}
         {lastEvents}
         disabled={txPending}
         {buildMode}

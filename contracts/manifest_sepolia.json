@@ -1,8 +1,8 @@
 {
   "world": {
-    "class_hash": "0x381899226c066a0262f45d6ab815f89818e0874ec3e66cdf72b5e92d8db4680",
-    "address": "0xc6671a0203469e24834af155b7b2edfb823938fea9f7c294a65995d6e1541f",
-    "seed": "planets_sepolia_v6",
+    "class_hash": "0x6d298044917078f70f5f20216af72167615f6202063558ff9948e21406df59e",
+    "address": "0x3301200ecb43c6eba1a3e71ca342331a666c355361827cf531f00dcccb19007",
+    "seed": "planets_sepolia_v7",
     "name": "Starnet",
     "entrypoints": [
       "uuid",
@@ -1485,8 +1485,8 @@
   },
   "contracts": [
     {
-      "address": "0x777c18d7b21026294d2426618f215119ac7244c3d90f08fdc2fc79d061a53b0",
-      "class_hash": "0x57ee98f86ea74778dbc140ec2199c8c111d5468c506108dac9aac6aa308c778",
+      "address": "0x70231955a999bca7b8e6f4d46c37db53497bab560d9fa13cb4ee72acf22ec6e",
+      "class_hash": "0x4b799ad1c08dddaa60e92d9b07add8dcdd5fe9ef251a98a151dee2ce730f66b",
       "abi": [
         {
           "type": "impl",
@@ -1573,6 +1573,14 @@
             },
             {
               "name": "Spaceport",
+              "type": "()"
+            },
+            {
+              "name": "Workshop",
+              "type": "()"
+            },
+            {
+              "name": "Cannon",
               "type": "()"
             }
           ]
@@ -1870,8 +1878,8 @@
       ]
     },
     {
-      "address": "0x3b3e92fa23080cbb56da646b2dcb26351c33f711df2576bdc9eb28893642627",
-      "class_hash": "0x22b9badaf50f1702457586a02822b16ded44aac679945c1f69a415da784243e",
+      "address": "0x7848153117da4254930f67ab647dba41f79276ec978b1555ef21f69d56d842e",
+      "class_hash": "0x402f7725d7b5576367a3ead1690d2d9d6ad6f28a17d32fdfee08ad912ff6625",
       "abi": [
         {
           "type": "impl",
@@ -2690,8 +2698,8 @@
       ]
     },
     {
-      "address": "0x7c74bc740a04438ff5f50ce8a3b92443c74371f9ec6fdc91f111a0d365b4a3d",
-      "class_hash": "0x7ca3d3ae1741f0333a65444012fbf5b6eb19d14323ab0104aede8091485585",
+      "address": "0x4309a084c27b60e2a7d41dbfe5ed06ae3f492f0cd3c0b2569815979e113ee65",
+      "class_hash": "0x1ea4ec1bdec63afa40d3d48b41fa53441170853845e9f1926ed59de39c8236e",
       "abi": [
         {
           "type": "impl",
@@ -2938,6 +2946,10 @@
             {
               "name": "output_per_worker_epoch",
               "type": "core::integer::u32"
+            },
+            {
+              "name": "completes_at",
+              "type": "core::integer::u64"
             }
           ]
         },
@@ -3011,6 +3023,10 @@
             },
             {
               "name": "unassigned_count",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unassigned_total_strength",
               "type": "core::integer::u32"
             },
             {
@@ -3345,8 +3361,8 @@
       ]
     },
     {
-      "address": "0x5a54b3c45f471407bd4bdcafdec36bcdd5e0982b7d8c45b0bbe1500cd09f47d",
-      "class_hash": "0x41514e85545e68c016e581dc9b913c1a01564eb209525c59f875a78f1f21dc",
+      "address": "0x18852a4290716ac54e25f3d483d53f829f3188999f031e8741a40804443aa80",
+      "class_hash": "0x4001b35cb0351a643869554eb9a261b94f4eccd67795388b8aad46ad3f03f",
       "abi": [
         {
           "type": "impl",
@@ -3801,9 +3817,14 @@
           "name": "output_per_worker_epoch",
           "type": "core::integer::u32",
           "key": false
+        },
+        {
+          "name": "completes_at",
+          "type": "core::integer::u64",
+          "key": false
         }
       ],
-      "class_hash": "0xc734387aa63f446a768057c8584e6f1ef7a106d18a3c371fe12955c004aa2b",
+      "class_hash": "0x20d48b2e954a39701e7e1dd2d5f871c41b857c11accb2f38fb3ac8fb018428",
       "tag": "planets-Building",
       "selector": "0x2db0421573db2890f931f038cd24b23237648b5a353c0dcb6b4b31809c505b8",
       "abi": [
@@ -3864,6 +3885,10 @@
             {
               "name": "output_per_worker_epoch",
               "type": "core::integer::u32"
+            },
+            {
+              "name": "completes_at",
+              "type": "core::integer::u64"
             }
           ]
         },
@@ -3910,6 +3935,10 @@
             {
               "name": "output_per_worker_epoch",
               "type": "core::integer::u32"
+            },
+            {
+              "name": "completes_at",
+              "type": "core::integer::u64"
             }
           ]
         },
@@ -4340,9 +4369,14 @@
           "name": "building_lat",
           "type": "core::integer::u16",
           "key": false
+        },
+        {
+          "name": "strength",
+          "type": "core::integer::u8",
+          "key": false
         }
       ],
-      "class_hash": "0x3fc1215057d50c037c64da6534eb5230c03462cdc935158adc01ac11edd5753",
+      "class_hash": "0x610d3dc418e42d56709c9e0ce91f6916aecaba7a2cfb1e1aa8664307faceafe",
       "tag": "planets-Colonist",
       "selector": "0x4e6feb47fd0a5059810caba585e8356087d7bcf1cac09c3ce19ce93d8abd7a7",
       "abi": [
@@ -4383,6 +4417,10 @@
             {
               "name": "building_lat",
               "type": "core::integer::u16"
+            },
+            {
+              "name": "strength",
+              "type": "core::integer::u8"
             }
           ]
         },
@@ -4413,6 +4451,10 @@
             {
               "name": "building_lat",
               "type": "core::integer::u16"
+            },
+            {
+              "name": "strength",
+              "type": "core::integer::u8"
             }
           ]
         },

@@ -13,6 +13,8 @@ pub struct Colonist {
     pub is_assigned: bool,
     pub building_lon: u16,
     pub building_lat: u16,
+    /// Combat strength 1-10. Increases by barracks.level per epoch while assigned to a Barracks.
+    pub strength: u8,
 }
 
 /// Total colonists ever spawned for a planet.

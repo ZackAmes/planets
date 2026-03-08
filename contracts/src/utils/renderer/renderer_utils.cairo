@@ -3,7 +3,7 @@
 use planets::models::planet::Planet;
 use planets::models::building::Building;
 use planets::utils::renderer::encoding::{U256BytesUsedTraitImpl, bytes_base64_encode};
-use planets::libs::terrain::{terrain_elevation, terrain_moisture, classify_terrain};
+use planets::libs::terrain::terrain_at;
 use game_components_interfaces::GameDetail;
 use graffiti::json::JsonImpl;
 
@@ -246,11 +246,13 @@ fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
 // Renders a 20-column x 10-row grid of terrain cells, each 30x60 px.
 // The grid is duplicated (columns rendered at x and x+600) so the
 // animateTransform scroll from 0 to -600 loops seamlessly.
+//
+// We keep 20x10 visually (400 rects) to keep the SVG compact, but sample
+// via terrain_at() so the colors match the authoritative 80x40 game grid.
 // ---------------------------------------------------------------------------
 
 fn _build_terrain_grid(seed: felt252) -> ByteArray {
     let mut result: ByteArray = "";
-    // Iterate col-major: col 0-19, row 0-9 per col.
     let mut i: u32 = 0;
     loop {
         if i >= 200 {
@@ -263,9 +265,10 @@ fn _build_terrain_grid(seed: felt252) -> ByteArray {
         let y: u32 = row * 60;
         let x2: u32 = x + 600;
 
-        let elevation = terrain_elevation(seed, col, row);
-        let moisture = terrain_moisture(seed, col, row);
-        let terrain_type = classify_terrain(elevation, moisture, row);
+        // Sample at center of this SVG cell — terrain_at uses the 80x40 game grid internally
+        let lon: u16 = (col * 180 + 90).try_into().unwrap_or(0);
+        let lat: u16 = (row * 180 + 90).try_into().unwrap_or(0);
+        let terrain_type = terrain_at(seed, lon, lat);
         let color = _terrain_color(terrain_type);
 
         let xs = format!("{}", x);

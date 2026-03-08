@@ -1,6 +1,7 @@
-import { createNoise2D, createNoise3D } from 'simplex-noise'
+import { createNoise3D } from 'simplex-noise'
+import { terrainAt } from './gameLogic.js'
 
-// Seeded PRNG (mulberry32) so the same seed always produces the same planet
+// Seeded PRNG (mulberry32) — used only for within-cell detail variation
 function mulberry32(seed) {
   return function () {
     let t = (seed += 0x6d2b79f5)
@@ -10,58 +11,56 @@ function mulberry32(seed) {
   }
 }
 
-const TERRAIN = {
-  ocean:     { color: '#1a5f7a', height: 0.05 },
-  shallow:   { color: '#2a85a0', height: 0.15 },
-  beach:     { color: '#c8b87a', height: 0.25 },
-  grassland: { color: '#4a7c39', height: 0.45 },
-  farmland:  { color: '#6aaa40', height: 0.45 },
-  forest:    { color: '#1e4d1a', height: 0.65 },
-  highland:  { color: '#7a6a5a', height: 0.90 },
-  mountain:  { color: '#5a4a3a', height: 1.20 },
-  snow:      { color: '#dde8ec', height: 1.40 },
-  desert:    { color: '#c8972a', height: 0.35 },
-  scrubland: { color: '#8a7a50', height: 0.40 },
+// Base RGB colors per terrain type — matches terrain.cairo type IDs
+const TERRAIN_RGB = {
+  1: [26,  107, 138],  // ocean
+  2: [61,  122,  42],  // plains
+  3: [22,   61,  18],  // forest
+  4: [196, 125,  21],  // desert
+  6: [74,   58,  44],  // mountain
+  7: [232, 242, 245],  // snow
+  8: [196, 168,  92],  // beach
 }
+const FALLBACK_RGB = [100, 100, 100]
 
-function classifyTerrain(elevation, moisture) {
-  if (elevation < 0.25) return 'ocean'
-  if (elevation < 0.32) return 'shallow'
-  if (elevation < 0.38) return 'beach'
-  if (elevation < 0.75) {
-    if (moisture < 0.25) return 'desert'
-    if (moisture < 0.40) return 'scrubland'
-    if (moisture < 0.55) return elevation > 0.60 ? 'highland' : 'grassland'
-    if (moisture < 0.75) return elevation > 0.58 ? 'forest' : 'farmland'
-    return 'forest'
-  }
-  if (elevation < 0.87) return 'mountain'
-  return 'snow'
-}
-
-const HEX_SIZE = 1.0
-const SQRT3 = Math.sqrt(3)
-
-// Pointy-top hex grid layout
-function hexPosition(col, row, width, height) {
-  const x = SQRT3 * HEX_SIZE * (col + 0.5 * (row & 1)) - (SQRT3 * HEX_SIZE * width) / 2
-  const z = 1.5 * HEX_SIZE * row - (1.5 * HEX_SIZE * height) / 2
-  return { x, z }
-}
+// Grid constants — must match terrain.cairo
+const TERRAIN_COLS = 80
+const TERRAIN_ROWS = 40
+const LON_PER_COL  = 45    // 3600 / 80
+const LAT_PER_ROW  = 45    // 1800 / 40
 
 /**
- * Generates an equirectangular canvas texture for a sphere.
- * Uses 3D noise sampled on a cylinder surface (cos/sin for longitude, linear
- * for latitude) so the left and right edges of the texture match perfectly —
- * no seam when the texture wraps around the sphere.
+ * Generates an equirectangular canvas texture for the planet sphere.
+ *
+ * seedFull: BigInt felt252 VRF seed — used to compute the authoritative 20x10
+ *   terrain grid via the same Poseidon hash logic as the contract. The visual
+ *   will exactly match the gameplay terrain.
+ *
+ * seed: JS number — used only for simplex detail noise (subtle shading within
+ *   each terrain cell so the texture doesn't look like a flat pixel grid).
+ *
+ * If seedFull is null the function falls back to a generic seed for dev use.
  */
-export function generatePlanetTexture(seed, texWidth = 1024, texHeight = 512) {
+export function generatePlanetTexture(seed, seedFull = null, texWidth = 1024, texHeight = 512) {
+  const effectiveSeedFull = seedFull ?? BigInt(seed)
+
+  // --- Precompute the 20x10 terrain grid (200 Poseidon calls total) ---
+  const grid = new Uint8Array(TERRAIN_COLS * TERRAIN_ROWS)
+  for (let row = 0; row < TERRAIN_ROWS; row++) {
+    for (let col = 0; col < TERRAIN_COLS; col++) {
+      // Sample at the center of each grid cell
+      const lon = col * LON_PER_COL + Math.floor(LON_PER_COL / 2)
+      const lat = row * LAT_PER_ROW + Math.floor(LAT_PER_ROW / 2)
+      grid[row * TERRAIN_COLS + col] = terrainAt(effectiveSeedFull, lon, lat)
+    }
+  }
+
+  // --- Simplex detail noise for within-cell shading ---
   const rand = mulberry32(seed)
-  const elevationNoise = createNoise3D(rand)
-  const moistureNoise = createNoise3D(rand)
+  const detailNoise = createNoise3D(rand)
 
   const canvas = document.createElement('canvas')
-  canvas.width = texWidth
+  canvas.width  = texWidth
   canvas.height = texHeight
   const ctx = canvas.getContext('2d')
   const imageData = ctx.createImageData(texWidth, texHeight)
@@ -70,84 +69,31 @@ export function generatePlanetTexture(seed, texWidth = 1024, texHeight = 512) {
 
   for (let y = 0; y < texHeight; y++) {
     for (let x = 0; x < texWidth; x++) {
-      const nx = x / texWidth   // longitude 0..1
-      const nz = y / texHeight  // latitude  0..1
+      // Pixel → lon/lat (integer, matching terrainAt's expected range)
+      const lon = Math.floor((x / texWidth) * 3600)
+      const lat = Math.floor((1 - y / texHeight) * 1800)
 
-      // Map longitude to a unit circle so nx=0 and nx=1 land on the same
-      // point → no seam when the equirectangular texture wraps the sphere.
-      const lon = nx * TWO_PI
-      const cx = Math.cos(lon)
-      const cy = Math.sin(lon)
+      // Grid cell lookup (O(1))
+      const col         = Math.min(TERRAIN_COLS - 1, Math.floor(lon / LON_PER_COL))
+      const row         = Math.min(TERRAIN_ROWS - 1, Math.floor(lat / LAT_PER_ROW))
+      const terrainType = grid[row * TERRAIN_COLS + col]
+      const base        = TERRAIN_RGB[terrainType] ?? FALLBACK_RGB
 
-      const e =
-        0.60 * ((elevationNoise(cx * 2, cy * 2, nz * 2) + 1) / 2) +
-        0.25 * ((elevationNoise(cx * 4, cy * 4, nz * 4) + 1) / 2) +
-        0.10 * ((elevationNoise(cx * 8, cy * 8, nz * 8) + 1) / 2) +
-        0.05 * ((elevationNoise(cx * 16, cy * 16, nz * 16) + 1) / 2)
-
-      const m =
-        0.70 * ((moistureNoise(cx * 3 + 7, cy * 3 + 7, nz * 3 + 13) + 1) / 2) +
-        0.20 * ((moistureNoise(cx * 6 + 7, cy * 6 + 7, nz * 6 + 13) + 1) / 2) +
-        0.10 * ((moistureNoise(cx * 12 + 7, cy * 12 + 7, nz * 12 + 13) + 1) / 2)
-
-      const terrain = classifyTerrain(e, m)
-      const hex = TERRAIN[terrain].color
-      const r = parseInt(hex.slice(1, 3), 16)
-      const g = parseInt(hex.slice(3, 5), 16)
-      const b = parseInt(hex.slice(5, 7), 16)
+      // Seamless horizontal detail noise (±20 lightness variation)
+      const nx    = x / texWidth
+      const nz    = y / texHeight
+      const angle = nx * TWO_PI
+      const d     = detailNoise(Math.cos(angle) * 5, Math.sin(angle) * 5, nz * 5)
+      const v     = Math.round(d * 20)
 
       const idx = (y * texWidth + x) * 4
-      imageData.data[idx]     = r
-      imageData.data[idx + 1] = g
-      imageData.data[idx + 2] = b
+      imageData.data[idx]     = Math.max(0, Math.min(255, base[0] + v))
+      imageData.data[idx + 1] = Math.max(0, Math.min(255, base[1] + v))
+      imageData.data[idx + 2] = Math.max(0, Math.min(255, base[2] + v))
       imageData.data[idx + 3] = 255
     }
   }
 
   ctx.putImageData(imageData, 0, 0)
   return canvas
-}
-
-export function generatePlanet(seed, width = 50, height = 40) {
-  const rand = mulberry32(seed)
-  const elevationNoise = createNoise2D(rand)
-  const moistureNoise = createNoise2D(rand)
-
-  const tiles = []
-
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
-      // Multi-octave noise for more natural terrain
-      const nx = col / width
-      const nz = row / height
-
-      const e =
-        0.60 * ((elevationNoise(nx * 2, nz * 2) + 1) / 2) +
-        0.25 * ((elevationNoise(nx * 4, nz * 4) + 1) / 2) +
-        0.10 * ((elevationNoise(nx * 8, nz * 8) + 1) / 2) +
-        0.05 * ((elevationNoise(nx * 16, nz * 16) + 1) / 2)
-
-      const m =
-        0.70 * ((moistureNoise(nx * 3 + 100, nz * 3 + 100) + 1) / 2) +
-        0.20 * ((moistureNoise(nx * 6 + 100, nz * 6 + 100) + 1) / 2) +
-        0.10 * ((moistureNoise(nx * 12 + 100, nz * 12 + 100) + 1) / 2)
-
-      const terrain = classifyTerrain(e, m)
-      const { x, z } = hexPosition(col, row, width, height)
-      const terrainData = TERRAIN[terrain]
-
-      tiles.push({
-        col,
-        row,
-        x,
-        z,
-        terrain,
-        color: terrainData.color,
-        height: terrainData.height,
-        elevation: e,
-      })
-    }
-  }
-
-  return { tiles, width, height, seed }
 }

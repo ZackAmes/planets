@@ -49,9 +49,11 @@ mod game_systems {
 
     const STARTING_COLONISTS: u32 = 5;
     const POP_PER_TC_LEVEL: u32 = 10;
+    const COLONIST_DEFAULT_STRENGTH: u8 = 2;
+    const COLONIST_MAX_STRENGTH: u8 = 10;
 
     const STARTING_WATER: u32 = 100;
-    const STARTING_IRON: u32 = 50;
+    const STARTING_IRON: u32 = 200;
     const STARTING_DEFENSE: u32 = 10;
 
     const EPOCH_SECONDS: u64 = 600;
@@ -66,12 +68,15 @@ mod game_systems {
     const URANIUM_MINE_COST: u32 = 150;
     const SPACEPORT_IRON_COST: u32 = 500;
     const SPACEPORT_URANIUM_COST: u32 = 100;
+    const WORKSHOP_COST: u32 = 120;
+    const CANNON_COST: u32 = 120;
+    const CANNON_DEFENSE_BASE: u32 = 6;
 
     // Base output per worker per epoch (terrain-scaled at construct time)
     const WATER_WELL_BASE: u32 = 10;
     const IRON_MINE_BASE: u32 = 8;
-    const BARRACKS_BASE: u32 = 8;
     const URANIUM_MINE_BASE: u32 = 3;
+    // Barracks has no resource output — it trains colonist strength instead
     const MAX_WORKERS: u8 = 3;
 
     // TC upgrade costs: iron = TC_UPGRADE_IRON_BASE * current_level
@@ -100,13 +105,20 @@ mod game_systems {
     // Gear
     const WEAPON_COST: u32 = 20;
     const ARMOR_COST: u32 = 30;
-    const COLONIST_BASE_POWER: u32 = 10;
     const WEAPON_POWER: u32 = 5;
     const ARMOR_POWER: u32 = 3;
 
     // Threat
     const THREAT_CHECK_INTERVAL: u64 = 600;
     const PASSIVE_DAMAGE_DIV: u32 = 10;
+
+    // Building / upgrade / training timers (seconds)
+    const BUILD_TIME: u64 = 60;          // 1 min — new construction
+    const UPGRADE_TIME_LV2: u64 = 120;   // 2 min — upgrade to level 2
+    const UPGRADE_TIME_LV3: u64 = 300;   // 5 min — upgrade to level 3
+    const UPGRADE_TIME_LV4: u64 = 480;   // 8 min — upgrade to level 4
+    const UPGRADE_TIME_LV5: u64 = 600;   // 10 min — upgrade to level 5
+    const BARRACKS_TRAIN_BASE: u64 = 60; // 60s * building.level per training session
 
     // -----------------------------------------------------------------------
     // Interface implementation
@@ -132,6 +144,9 @@ mod game_systems {
             let tc_lon: u16 = (col * LON_PER_HEX + LON_PER_HEX / 2).try_into().unwrap();
             let tc_lat: u16 = (row * LAT_PER_HEX + LAT_PER_HEX / 2).try_into().unwrap();
 
+            let tc_terrain = planets::libs::terrain::terrain_at(planet.seed, tc_lon, tc_lat);
+            assert!(planets::libs::terrain::is_buildable(tc_terrain), "Planets: cannot settle on ocean");
+
             world
                 .write_model(
                     @Building {
@@ -145,6 +160,7 @@ mod game_systems {
                         workers: 0,
                         max_workers: 0,
                         output_per_worker_epoch: 0,
+                        completes_at: 0,
                     },
                 );
             let mut bcount: PlanetBuildingCount = world.read_model(planet_id);
@@ -212,6 +228,9 @@ mod game_systems {
             assert!(bcount.count < max_buildings, "Planets: building limit reached (upgrade TC)");
 
             // Gate high-tier buildings on TC level
+            if building_type == BuildingType::Workshop {
+                assert!(colony.tc_level >= 2, "Planets: requires TC level 2");
+            }
             if building_type == BuildingType::UraniumMine {
                 assert!(colony.tc_level >= 3, "Planets: requires TC level 3");
             }
@@ -233,6 +252,8 @@ mod game_systems {
                 BuildingType::Barracks => 4,
                 BuildingType::UraniumMine => 5,
                 BuildingType::Spaceport => 6,
+                BuildingType::Workshop => 7,
+                BuildingType::Cannon => 8,
             };
 
             let iron_cost: u32 = match building_type {
@@ -243,6 +264,8 @@ mod game_systems {
                 BuildingType::Barracks => BARRACKS_COST,
                 BuildingType::UraniumMine => URANIUM_MINE_COST,
                 BuildingType::Spaceport => SPACEPORT_IRON_COST,
+                BuildingType::Workshop => WORKSHOP_COST,
+                BuildingType::Cannon => CANNON_COST,
             };
 
             let mut resources: Resources = world.read_model(planet_id);
@@ -264,6 +287,7 @@ mod game_systems {
             }
 
             let terrain_type = planets::libs::terrain::terrain_at(planet.seed, lon, lat);
+            assert!(planets::libs::terrain::is_buildable(terrain_type), "Planets: cannot build on ocean");
             let terrain_bonus = planets::libs::terrain::terrain_bonus(building_type_u8, terrain_type);
 
             let base_output: u32 = match building_type {
@@ -271,9 +295,11 @@ mod game_systems {
                 BuildingType::WaterWell => WATER_WELL_BASE,
                 BuildingType::IronMine => IRON_MINE_BASE,
                 BuildingType::House => 0,
-                BuildingType::Barracks => BARRACKS_BASE,
+                BuildingType::Barracks => 0,  // barracks trains colonists, no resource output
                 BuildingType::UraniumMine => URANIUM_MINE_BASE,
                 BuildingType::Spaceport => 0,
+                BuildingType::Workshop => 0,
+                BuildingType::Cannon => CANNON_DEFENSE_BASE,
             };
 
             let output_per_worker_epoch: u32 = if base_output == 0 {
@@ -290,6 +316,17 @@ mod game_systems {
                 BuildingType::Barracks => MAX_WORKERS,
                 BuildingType::UraniumMine => MAX_WORKERS,
                 BuildingType::Spaceport => 0,
+                BuildingType::Workshop => 0,
+                BuildingType::Cannon => MAX_WORKERS,
+            };
+
+            let now = get_block_timestamp();
+            // House is instant (colonist spawns on build); TC is auto-placed (completes_at: 0).
+            // All other buildings take BUILD_TIME (60s) to construct before they're usable.
+            let build_completes_at: u64 = match building_type {
+                BuildingType::House => 0,
+                BuildingType::TownCenter => 0,
+                _ => now + BUILD_TIME,
             };
 
             world
@@ -305,6 +342,7 @@ mod game_systems {
                         workers: 0,
                         max_workers,
                         output_per_worker_epoch,
+                        completes_at: build_completes_at,
                     },
                 );
 
@@ -332,10 +370,16 @@ mod game_systems {
             assert_token_ownership(token_address, planet_id);
             _tick(ref world, planet_id);
 
+            let now = get_block_timestamp();
+
             let mut building: Building = world.read_model((planet_id, lon, lat));
             assert!(building.exists, "Planets: building not found");
             assert!(building.max_workers > 0, "Planets: building has no worker slots");
             assert!(workers <= building.max_workers, "Planets: exceeds building capacity");
+            assert!(
+                building.completes_at == 0 || now >= building.completes_at,
+                "Planets: building is busy",
+            );
 
             let old: u8 = building.workers;
 
@@ -353,11 +397,13 @@ mod game_systems {
                     let cid = entry.colonist_id;
                     _remove_from_unassigned(ref world, planet_id, cid);
                     _add_to_assigned(ref world, planet_id, cid);
+                    let existing_c: Colonist = world.read_model((planet_id, cid));
                     world
                         .write_model(
                             @Colonist {
                                 planet_id, colonist_id: cid, is_assigned: true,
                                 building_lon: lon, building_lat: lat,
+                                strength: existing_c.strength,
                             },
                         );
                     i += 1;
@@ -381,6 +427,7 @@ mod game_systems {
                                 @Colonist {
                                     planet_id, colonist_id: cid, is_assigned: false,
                                     building_lon: 0, building_lat: 0,
+                                    strength: colonist.strength,
                                 },
                             );
                         found += 1;
@@ -391,6 +438,16 @@ mod game_systems {
             }
 
             building.workers = workers;
+
+            // Barracks: start (or clear) a training session when worker count changes.
+            if building.building_type == 4 {
+                if workers > 0 {
+                    building.completes_at = now + BARRACKS_TRAIN_BASE * building.level.into();
+                } else {
+                    building.completes_at = 0;
+                }
+            }
+
             world.write_model(@building);
         }
 
@@ -461,10 +518,16 @@ mod game_systems {
 
             _tick(ref world, planet_id);
 
+            let now = get_block_timestamp();
+
             let mut building: Building = world.read_model((planet_id, lon, lat));
             assert!(building.exists, "Planets: building not found");
             assert!(building.max_workers > 0, "Planets: cannot upgrade this building type");
             assert!(building.level < 5, "Planets: building already at max level");
+            assert!(
+                building.completes_at == 0 || now >= building.completes_at,
+                "Planets: building is busy",
+            );
 
             let colony: Colony = world.read_model(planet_id);
             assert!(building.level < colony.tc_level, "Planets: upgrade TC first");
@@ -486,12 +549,13 @@ mod game_systems {
             world.write_model(@resources);
 
             // Recompute output at the new level
+            // Note: Barracks (4) has 0 base output — its benefit is training speed via building.level
             let new_level: u8 = building.level + 1;
             let base_output: u32 = match building.building_type {
                 1 => WATER_WELL_BASE,
                 2 => IRON_MINE_BASE,
-                4 => BARRACKS_BASE,
                 5 => URANIUM_MINE_BASE,
+                8 => CANNON_DEFENSE_BASE,
                 _ => 0,
             };
             let lv1_output: u32 = if base_output == 0 {
@@ -508,8 +572,17 @@ mod game_systems {
             };
             let new_output: u32 = lv1_output * level_factor / 100;
 
+            let upgrade_completes_at: u64 = match new_level {
+                2 => now + UPGRADE_TIME_LV2,
+                3 => now + UPGRADE_TIME_LV3,
+                4 => now + UPGRADE_TIME_LV4,
+                5 => now + UPGRADE_TIME_LV5,
+                _ => now + UPGRADE_TIME_LV2,
+            };
+
             building.level = new_level;
             building.output_per_worker_epoch = new_output;
+            building.completes_at = upgrade_completes_at;
             world.write_model(@building);
 
             post_action(token_address, planet_id);
@@ -525,6 +598,19 @@ mod game_systems {
             let colony: Colony = world.read_model(planet_id);
             assert!(colony.founded, "Planets: no colony yet");
             assert!(weapons + armor > 0, "Planets: nothing to craft");
+
+            // Require a Workshop to craft gear
+            let bcount_check: PlanetBuildingCount = world.read_model(planet_id);
+            let mut has_workshop = false;
+            let mut wi: u32 = 0;
+            loop {
+                if wi >= bcount_check.count { break; }
+                let wentry: PlanetBuildingEntry = world.read_model((planet_id, wi));
+                let wb: Building = world.read_model((planet_id, wentry.lon, wentry.lat));
+                if wb.building_type == 7 { has_workshop = true; break; }
+                wi += 1;
+            };
+            assert!(has_workshop, "Planets: Workshop required to craft gear");
 
             _tick(ref world, planet_id);
 
@@ -557,14 +643,25 @@ mod game_systems {
             _tick(ref world, planet_id);
 
             let ua: ColonistsUnassigned = world.read_model(planet_id);
-            assert!(ua.count >= colonists.into(), "Planets: not enough idle colonists");
+            let col_count: u32 = colonists.into();
+            assert!(ua.count >= col_count, "Planets: not enough idle colonists");
 
             let gear: Gear = world.read_model(planet_id);
             assert!(gear.weapons >= weapons, "Planets: not enough weapons");
             assert!(gear.armor >= armor, "Planets: not enough armor");
 
-            let col_count: u32 = colonists.into();
-            let base_power: u32 = col_count * COLONIST_BASE_POWER
+            // Sum strength of all unassigned colonists scaled by proportion being sent
+            let mut total_ua_strength: u32 = 0;
+            let mut si: u32 = 0;
+            loop {
+                if si >= ua.count { break; }
+                let sentry: ColonistUnassignedEntry = world.read_model((planet_id, si));
+                let sc: Colonist = world.read_model((planet_id, sentry.colonist_id));
+                total_ua_strength += sc.strength.into();
+                si += 1;
+            };
+            let avg_str: u32 = if ua.count > 0 { total_ua_strength / ua.count } else { 1 };
+            let base_power: u32 = col_count * avg_str
                 + weapons * WEAPON_POWER
                 + armor * ARMOR_POWER;
 
@@ -635,23 +732,89 @@ mod game_systems {
             epochs_raw.try_into().unwrap()
         };
 
-        // Compute production rates
         let bcount: PlanetBuildingCount = world.read_model(planet_id);
+
+        // --- Barracks training completion pass ---
+        // For each barracks whose session timer has elapsed: boost assigned colonist strengths,
+        // then restart the session if workers remain.
+        let mut ci: u32 = 0;
+        loop {
+            if ci >= bcount.count { break; }
+            let centry: PlanetBuildingEntry = world.read_model((planet_id, ci));
+            let mut cb: Building = world.read_model((planet_id, centry.lon, centry.lat));
+            if cb.building_type == 4 && cb.completes_at > 0 && now >= cb.completes_at {
+                if cb.workers > 0 {
+                    // Apply strength gain to each colonist assigned to this barracks
+                    let assigned_list: ColonistsAssigned = world.read_model(planet_id);
+                    let mut ai: u32 = 0;
+                    loop {
+                        if ai >= assigned_list.count { break; }
+                        let aentry: ColonistAssignedEntry = world.read_model((planet_id, ai));
+                        let colonist: Colonist = world.read_model((planet_id, aentry.colonist_id));
+                        if colonist.building_lon == centry.lon && colonist.building_lat == centry.lat
+                            && colonist.strength < COLONIST_MAX_STRENGTH {
+                            let new_str: u32 = colonist.strength.into() + cb.level.into();
+                            let capped: u8 = if new_str >= COLONIST_MAX_STRENGTH.into() {
+                                COLONIST_MAX_STRENGTH
+                            } else {
+                                new_str.try_into().unwrap_or(COLONIST_MAX_STRENGTH)
+                            };
+                            world.write_model(@Colonist {
+                                planet_id, colonist_id: colonist.colonist_id,
+                                is_assigned: colonist.is_assigned,
+                                building_lon: colonist.building_lon, building_lat: colonist.building_lat,
+                                strength: capped,
+                            });
+                        }
+                        ai += 1;
+                    };
+                    // Restart training session
+                    cb.completes_at = now + BARRACKS_TRAIN_BASE * cb.level.into();
+                } else {
+                    cb.completes_at = 0;
+                }
+                world.write_model(@cb);
+            }
+            ci += 1;
+        };
+
+        // --- Non-barracks construction/upgrade completion: clear elapsed timers ---
+        let mut cli: u32 = 0;
+        loop {
+            if cli >= bcount.count { break; }
+            let clentry: PlanetBuildingEntry = world.read_model((planet_id, cli));
+            let mut clb: Building = world.read_model((planet_id, clentry.lon, clentry.lat));
+            if clb.building_type != 4 && clb.completes_at > 0 && now >= clb.completes_at {
+                clb.completes_at = 0;
+                world.write_model(@clb);
+            }
+            cli += 1;
+        };
+
+        // --- Compute production rates (skip buildings still under construction/upgrade/training) ---
         let mut water_rate: u32 = 0;
         let mut iron_rate: u32 = 0;
         let mut defense_rate: u32 = 0;
         let mut uranium_rate: u32 = 0;
+        let mut cannon_damage_rate: u32 = 0;
 
         let mut i: u32 = 0;
         loop {
             if i >= bcount.count { break; }
             let entry: PlanetBuildingEntry = world.read_model((planet_id, i));
             let b: Building = world.read_model((planet_id, entry.lon, entry.lat));
-            let w: u32 = b.workers.into();
-            if b.building_type == 1 { water_rate   += w * b.output_per_worker_epoch; }
-            else if b.building_type == 2 { iron_rate    += w * b.output_per_worker_epoch; }
-            else if b.building_type == 4 { defense_rate += w * b.output_per_worker_epoch; }
-            else if b.building_type == 5 { uranium_rate += w * b.output_per_worker_epoch; }
+            // Skip buildings that are still busy (construction, upgrade, or training in progress)
+            let active = b.completes_at == 0 || now >= b.completes_at;
+            if active {
+                let w: u32 = b.workers.into();
+                if b.building_type == 1 { water_rate   += w * b.output_per_worker_epoch; }
+                else if b.building_type == 2 { iron_rate    += w * b.output_per_worker_epoch; }
+                else if b.building_type == 5 { uranium_rate += w * b.output_per_worker_epoch; }
+                else if b.building_type == 8 {
+                    defense_rate += w * b.output_per_worker_epoch;
+                    cannon_damage_rate += w * b.output_per_worker_epoch;
+                }
+            }
             i += 1;
         };
 
@@ -659,8 +822,21 @@ mod game_systems {
         resources.defense += defense_rate * epochs;
         resources.uranium += uranium_rate * epochs;
 
-        // Invader passive damage
+        // Invader passive damage and cannon fire
         let mut invader: Invader = world.read_model(planet_id);
+
+        // Cannon fires before passive damage — may kill invader entirely
+        if invader.active && cannon_damage_rate > 0 {
+            let cannon_total = cannon_damage_rate * epochs;
+            let new_inv_str = if invader.strength > cannon_total { invader.strength - cannon_total } else { 0 };
+            let new_inv_active = new_inv_str > 0;
+            world.write_model(@Invader {
+                planet_id, active: new_inv_active, strength: new_inv_str,
+                lon: invader.lon, lat: invader.lat, spawned_at: invader.spawned_at,
+            });
+            invader.active = new_inv_active;
+            invader.strength = new_inv_str;
+        }
         if invader.active {
             let dmg_per_epoch: u32 = if invader.strength / PASSIVE_DAMAGE_DIV < 1 {
                 1
@@ -819,7 +995,7 @@ mod game_systems {
     fn _spawn_colonist(ref world: WorldStorage, planet_id: felt252) {
         let mut pcc: PlanetColonistCount = world.read_model(planet_id);
         let cid = pcc.count;
-        world.write_model(@Colonist { planet_id, colonist_id: cid, is_assigned: false, building_lon: 0, building_lat: 0 });
+        world.write_model(@Colonist { planet_id, colonist_id: cid, is_assigned: false, building_lon: 0, building_lat: 0, strength: COLONIST_DEFAULT_STRENGTH });
         _add_to_unassigned(ref world, planet_id, cid);
         pcc.count += 1;
         world.write_model(@pcc);

@@ -3,7 +3,7 @@
 use planets::models::planet::Planet;
 use planets::models::colony::Colony;
 use planets::models::resources::Resources;
-use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
+use planets::models::colonists::{Colonist, ColonistsAssigned, ColonistsUnassigned, ColonistUnassignedEntry};
 use planets::models::building::Building;
 use planets::models::invader::Invader;
 use planets::models::gear::Gear;
@@ -17,6 +17,8 @@ pub struct PlanetState {
     pub resources: Resources,
     pub assigned_count: u32,
     pub unassigned_count: u32,
+    /// Sum of strength of all unassigned colonists (for fight power preview).
+    pub unassigned_total_strength: u32,
     pub buildings: Array<Building>,
     pub invader: Invader,
     pub gear: Gear,
@@ -47,7 +49,7 @@ pub mod planet_systems {
     use planets::models::planet::Planet;
     use planets::models::colony::Colony;
     use planets::models::resources::Resources;
-    use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
+    use planets::models::colonists::{Colonist, ColonistsAssigned, ColonistsUnassigned, ColonistUnassignedEntry};
     use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
     use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
     use planets::models::invader::Invader;
@@ -67,6 +69,9 @@ pub mod planet_systems {
             let mut world: WorldStorage = self.world(@DEFAULT_NS());
             let caller = get_caller_address();
             let seed: felt252 = VRFTrait::seed(VRFTrait::cartridge_vrf_address());
+
+            let planet: Planet = world.read_model(planet_id);
+            assert!(planet.spawned_at == 0, "Planet already spawned" );
 
             let now = get_block_timestamp();
             world
@@ -102,6 +107,18 @@ pub mod planet_systems {
             let resources: Resources = world.read_model(planet_id);
             let assigned: ColonistsAssigned = world.read_model(planet_id);
             let unassigned: ColonistsUnassigned = world.read_model(planet_id);
+
+            // Sum strength of all unassigned colonists for fight power preview
+            let mut unassigned_total_strength: u32 = 0;
+            let mut ui: u32 = 0;
+            loop {
+                if ui >= unassigned.count { break; }
+                let ue: ColonistUnassignedEntry = world.read_model((planet_id, ui));
+                let c: Colonist = world.read_model((planet_id, ue.colonist_id));
+                unassigned_total_strength += c.strength.into();
+                ui += 1;
+            };
+
             let buildings = _read_buildings(@world, planet_id);
             let invader: Invader = world.read_model(planet_id);
             let gear: Gear = world.read_model(planet_id);
@@ -111,6 +128,7 @@ pub mod planet_systems {
                 resources,
                 assigned_count: assigned.count,
                 unassigned_count: unassigned.count,
+                unassigned_total_strength,
                 buildings,
                 invader,
                 gear,
