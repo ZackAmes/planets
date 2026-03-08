@@ -182,20 +182,7 @@ export async function fetchColony(planetId) {
       col: Number(c.col),
       row: Number(c.row),
       founded: Boolean(c.founded),
-      food: Number(c.food),
-      minerals: Number(c.minerals),
-      buildPoints: Number(c.build_points),
-      defense: Number(c.defense),
-      fertility: Number(c.fertility),
-      mineralRichness: Number(c.mineral_richness),
-      farms: Number(c.farms),
-      mines: Number(c.mines),
-      barracks: Number(c.barracks),
-      workshops: Number(c.workshops),
-      farmOutput: Number(c.farm_output),
-      mineOutput: Number(c.mine_output),
-      barracksOutput: Number(c.barracks_output),
-      workshopOutput: Number(c.workshop_output),
+      tcLevel: Number(c.tc_level),
     }
   } catch {
     return null
@@ -219,10 +206,47 @@ export async function fetchBuildings(planetId) {
       lat: Number(b.lat),
       buildingType: Number(b.building_type),
       terrainBonus: Number(b.terrain_bonus),
-      outputPerEpoch: Number(b.output_per_epoch),
+      workers: Number(b.workers),
+      maxWorkers: Number(b.max_workers),
+      outputPerWorkerEpoch: Number(b.output_per_worker_epoch),
     }))
   } catch {
     return []
+  }
+}
+
+export async function fetchResources(planetId) {
+  try {
+    const contract = rendererContract()
+    const r = await contract.get_resources(BigInt(planetId))
+    return {
+      water: Number(r.water),
+      iron: Number(r.iron),
+      defense: Number(r.defense),
+      lastUpdatedAt: Number(BigInt(r.last_updated_at)),
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function fetchColonistsAssigned(planetId) {
+  try {
+    const contract = rendererContract()
+    const ca = await contract.get_colonists_assigned(BigInt(planetId))
+    return { count: Number(ca.count) }
+  } catch {
+    return null
+  }
+}
+
+export async function fetchColonistsUnassigned(planetId) {
+  try {
+    const contract = rendererContract()
+    const cu = await contract.get_colonists_unassigned(BigInt(planetId))
+    return { count: Number(cu.count) }
+  } catch {
+    return null
   }
 }
 

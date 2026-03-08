@@ -3,6 +3,8 @@
 use game_components_interfaces::GameDetail;
 use planets::models::planet::Planet;
 use planets::models::colony::Colony;
+use planets::models::resources::Resources;
+use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
 use planets::models::building::Building;
 use starknet::ContractAddress;
 
@@ -13,6 +15,9 @@ pub trait IRendererSystems<T> {
     fn generate_details(self: @T, planet_id: u64) -> Span<GameDetail>;
     fn get_planet(self: @T, planet_id: u64) -> Planet;
     fn get_colony(self: @T, planet_id: u64) -> Colony;
+    fn get_resources(self: @T, planet_id: u64) -> Resources;
+    fn get_colonists_assigned(self: @T, planet_id: u64) -> ColonistsAssigned;
+    fn get_colonists_unassigned(self: @T, planet_id: u64) -> ColonistsUnassigned;
     fn get_player_planets(self: @T, player: ContractAddress) -> Array<u64>;
     fn get_planet_buildings(self: @T, planet_id: u64) -> Array<Building>;
 }
@@ -22,6 +27,8 @@ mod renderer_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
     use planets::models::colony::Colony;
+    use planets::models::resources::Resources;
+    use planets::models::colonists::{ColonistsAssigned, ColonistsUnassigned};
     use planets::models::player_planets::{PlayerPlanets, PlayerPlanetEntry};
     use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
     use planets::utils::renderer::encoding::U256BytesUsedTraitImpl;
@@ -157,6 +164,21 @@ mod renderer_systems {
         }
 
         fn get_colony(self: @ContractState, planet_id: u64) -> Colony {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_resources(self: @ContractState, planet_id: u64) -> Resources {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_colonists_assigned(self: @ContractState, planet_id: u64) -> ColonistsAssigned {
+            let world = self.world(@DEFAULT_NS());
+            world.read_model(planet_id)
+        }
+
+        fn get_colonists_unassigned(self: @ContractState, planet_id: u64) -> ColonistsUnassigned {
             let world = self.world(@DEFAULT_NS());
             world.read_model(planet_id)
         }

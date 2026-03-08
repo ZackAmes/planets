@@ -4,15 +4,10 @@
   import PlanetView from './components/PlanetView.svelte'
   import ColonyPanel from './components/ColonyPanel.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, assignOrders, constructBuilding } from './lib/onchain.js'
-  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings } from './lib/contracts.js'
-  import {
-    foundColony as localFoundColony,
-    assignOrders as localAssignOrders,
-    applyConstruct, computeThreat, attackProbability,
-    terrainAt, terrainBonus as calcTerrainBonus, terrainName,
-    buildingOutputPerEpoch, EPOCH_SECONDS,
-  } from './lib/gameLogic.js'
+  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, waitForTx } from './lib/onchain.js'
+  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings, fetchResources, fetchColonistsAssigned, fetchColonistsUnassigned } from './lib/contracts.js'
+  import { getProvider } from './lib/contracts.js'
+  import { terrainAt, EPOCH_SECONDS } from './lib/gameLogic.js'
 
   // ---------------------------------------------------------------------------
   // Wallet state
@@ -31,24 +26,27 @@
   // Game state — phases: 'connect' | 'mint' | 'spawn' | 'founding' | 'managing' | 'gameover'
   // ---------------------------------------------------------------------------
   let phase = $state('connect')
-  let planetId = $state(null)   // set after mint_game
+  let planetId = $state(null)
   let planetName = $state('')
 
-  let planet = $state(null)     // { seed, population, actionCount, width, height }
-  let colony = $state(null)     // { col, row, food, minerals, ... }
+  let planet    = $state(null)  // { seed, seedFull, population, actionCount, ... }
+  let colony    = $state(null)  // { col, row, founded, tcLevel }
+  let resources = $state(null)  // { water, iron, defense, lastUpdatedAt }
+  let assigned  = $state(null)  // { count }
+  let unassigned = $state(null) // { count }
 
-  let pendingLocation = $state(null)  // { col, row } chosen but not confirmed
-  let pendingMarker = $state(null)    // [x, y, z]
+  let pendingLocation = $state(null)  // { col, row }
+  let pendingMarker   = $state(null)  // [x, y, z]
   let confirmedMarker = $state(null)  // [x, y, z]
 
-  let buildings = $state([])          // [{ lon, lat, buildingType }]
-  let buildMode = $state(false)       // true when player is placing a building
+  let buildings        = $state([])
+  let buildMode        = $state(false)
   let selectedBuildType = $state(null)
-  let pendingBuildSite = $state(null) // { lon, lat, localPos }
+  let pendingBuildSite  = $state(null) // { lon, lat, localPos }
 
   let lastEvents = $state([])
-  let txPending = $state(false)
-  let txStatus = $state('')
+  let txPending  = $state(false)
+  let txStatus   = $state('')
 
   // ---------------------------------------------------------------------------
   // Wallet connect + game state restore
@@ -56,7 +54,6 @@
   async function handleConnect() {
     const acc = await connect()
     if (!acc) return
-
     txPending = true
     txStatus = 'Loading your planets...'
     try {
@@ -70,78 +67,56 @@
     }
   }
 
-  /**
-   * Try to restore an existing game session for this address.
-   * Checks onchain first, falls back to localStorage for the planet id.
-   */
   async function restoreState(playerAddress) {
-    // 1. Look up planet IDs onchain
     let ids = await fetchDenshokanPlanets(playerAddress)
-
-    // 2. Fall back to localStorage if chain returns nothing yet
     if (ids.length === 0) {
       const cached = localStorage.getItem(`planets:${playerAddress}`)
       if (cached) ids = [BigInt(cached)]
     }
+    if (ids.length === 0) { phase = 'mint'; return }
 
-    if (ids.length === 0) {
-      phase = 'mint'
-      return
-    }
-
-    // Use the most recent planet (last in list)
     const id = ids[ids.length - 1]
     const p = await fetchPlanet(id)
+    if (!p) { planetId = id; phase = 'spawn'; return }
 
-    if (!p) {
-      // Token minted but planet not spawned yet
-      planetId = id
-      phase = 'spawn'
-      return
-    }
-
-    // Hydrate planet state
     planetId = id
     planetName = p.name
-    planet = {
-      seed: p.seedJs,
-      seedFull: p.seed,
-      population: p.population,
-      actionCount: p.actionCount,
-      width: p.width,
-      height: p.height,
-    }
+    planet = { seed: p.seedJs, seedFull: p.seed, population: p.population, actionCount: p.actionCount, width: p.width, height: p.height, spawnedAt: p.spawnedAt, lastActionAt: p.lastActionAt }
 
-    if (p.population === 0 && p.actionCount > 0) {
-      phase = 'gameover'
-      return
-    }
+    if (p.population === 0 && p.actionCount > 0) { phase = 'gameover'; return }
 
-    // Try to load colony
     const c = await fetchColony(id)
-    if (!c) {
-      phase = 'founding'
-      return
-    }
+    if (!c) { phase = 'founding'; return }
 
     colony = c
-    confirmedMarker = null  // marker position isn't stored onchain; user will see colony panel
-    buildings = await fetchBuildings(id)
+    confirmedMarker = null
+    await refreshColonyState(id)
     phase = 'managing'
+  }
+
+  async function refreshColonyState(id) {
+    const pid = id ?? planetId
+    const [b, r, ca, cu] = await Promise.all([
+      fetchBuildings(pid),
+      fetchResources(pid),
+      fetchColonistsAssigned(pid),
+      fetchColonistsUnassigned(pid),
+    ])
+    buildings = b
+    resources = r
+    assigned = ca
+    unassigned = cu
   }
 
   async function handleDisconnect() {
     await disconnect()
-    phase = 'connect'
-    planetId = null
-    planetName = ''
-    planet = null
-    colony = null
-    confirmedMarker = null
+    phase = 'connect'; planetId = null; planetName = ''; planet = null
+    colony = null; resources = null; assigned = null; unassigned = null
+    confirmedMarker = null; buildings = []
   }
 
   // ---------------------------------------------------------------------------
-  // Mint game token
+  // Mint
   // ---------------------------------------------------------------------------
   async function handleMint() {
     if (!account || !planetName.trim()) return
@@ -149,23 +124,20 @@
     txStatus = 'Minting planet token...'
     try {
       const { transaction_hash, tokenId } = await mintGame(account, planetName.trim())
-      console.log('[mint] tx hash:', transaction_hash, 'tokenId:', tokenId?.toString())
+      console.log('[mint]', transaction_hash, tokenId?.toString())
       planetId = tokenId
       localStorage.setItem(`planets:${address}`, tokenId.toString())
       txStatus = 'Token minted!'
       phase = 'spawn'
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally {
-      txPending = false
-    }
+    } finally { txPending = false }
   }
 
   // ---------------------------------------------------------------------------
-  // Spawn planet
+  // Spawn
   // ---------------------------------------------------------------------------
   async function handleSpawn() {
-    console.log('[spawn] called', { account: !!account, planetName, planetId })
     if (!account || !planetName.trim() || planetId == null) return
     txPending = true
     txStatus = 'Spawning planet...'
@@ -175,22 +147,12 @@
       txStatus = 'Reading planet seed...'
       const p = await fetchPlanet(planetId)
       if (!p) throw new Error('Planet not found after spawn')
-      console.log('[spawn] vrf seed:', p.seed.toString())
-      planet = {
-        seed: p.seedJs,
-        seedFull: p.seed,
-        population: p.population,
-        actionCount: p.actionCount,
-        width: p.width,
-        height: p.height,
-      }
+      planet = { seed: p.seedJs, seedFull: p.seed, population: p.population, actionCount: p.actionCount, width: p.width, height: p.height, spawnedAt: p.spawnedAt, lastActionAt: p.lastActionAt }
       txStatus = 'Planet spawned!'
       phase = 'founding'
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally {
-      txPending = false
-    }
+    } finally { txPending = false }
   }
 
   // ---------------------------------------------------------------------------
@@ -199,22 +161,35 @@
   function handleLocationPick(col, row, _lon, _lat, localPos) {
     pendingLocation = { col, row }
     pendingMarker = localPos
-    colony = localFoundColony(planet, col, row)
+  }
+
+  async function handleConfirmLocation() {
+    if (!pendingLocation || !account) return
+    txPending = true
+    txStatus = 'Founding colony...'
+    try {
+      const tx = await foundColony(account, planetId, pendingLocation.col, pendingLocation.row)
+      await waitForTx(getProvider(), tx)
+      const [c, p] = await Promise.all([fetchColony(planetId), fetchPlanet(planetId)])
+      colony = c
+      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
+      confirmedMarker = pendingMarker
+      pendingLocation = null
+      pendingMarker = null
+      await refreshColonyState(planetId)
+      phase = 'managing'
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
   }
 
   // ---------------------------------------------------------------------------
   // Building placement
   // ---------------------------------------------------------------------------
   function handleBuildMode(type) {
-    if (type === null) {
-      buildMode = false
-      selectedBuildType = null
-      pendingBuildSite = null
-    } else {
-      buildMode = true
-      selectedBuildType = type
-      pendingBuildSite = null
-    }
+    if (type === null) { buildMode = false; selectedBuildType = null; pendingBuildSite = null }
+    else { buildMode = true; selectedBuildType = type; pendingBuildSite = null }
   }
 
   function handleBuildPick(lon, lat, localPos) {
@@ -226,85 +201,55 @@
     txPending = true
     txStatus = 'Constructing building...'
     try {
-      const buildTx = await constructBuilding(account, planetId, lon, lat, type)
-      console.log('[construct_building] tx hash:', buildTx, { lon, lat, type })
-      // Compute terrain bonus client-side for optimistic update
-      const terrain  = terrainAt(planet.seedFull, lon, lat)
-      const bonus    = calcTerrainBonus(type, terrain)
-      const output   = buildingOutputPerEpoch(type, bonus)
-      colony = applyConstruct(colony, type, bonus, output)
-      buildings = [...buildings, { lon, lat, buildingType: type, terrainBonus: bonus, outputPerEpoch: output }]
-      buildMode = false
-      selectedBuildType = null
-      pendingBuildSite = null
+      const tx = await constructBuilding(account, planetId, lon, lat, type)
+      console.log('[construct_building]', tx, { lon, lat, type })
+      await waitForTx(getProvider(), tx)
+      await refreshColonyState(planetId)
+      buildMode = false; selectedBuildType = null; pendingBuildSite = null
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally {
-      txPending = false
-    }
-  }
-
-  async function handleConfirmLocation() {
-    if (!pendingLocation || !account) return
-    txPending = true
-    txStatus = 'Founding colony...'
-    try {
-      const foundTx = await foundColony(account, planetId, pendingLocation.col, pendingLocation.row)
-      console.log('[found_colony] tx hash:', foundTx)
-      colony = localFoundColony(planet, pendingLocation.col, pendingLocation.row)
-      confirmedMarker = pendingMarker
-      pendingLocation = null
-      pendingMarker = null
-      phase = 'managing'
-      txStatus = ''
-    } catch (e) {
-      txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally {
-      txPending = false
-    }
+    } finally { txPending = false }
   }
 
   // ---------------------------------------------------------------------------
-  // Turn orders
+  // Worker assignment
   // ---------------------------------------------------------------------------
-  async function handleSubmitOrders(orders) {
-    if (!colony || !account || planet.population === 0) return
+  async function handleAssignWorkers(lon, lat, workers) {
+    if (!account) return
     txPending = true
-    txStatus = 'Submitting orders...'
+    txStatus = 'Assigning workers...'
     try {
-      const ordersTx = await assignOrders(account, planetId, orders)
-      console.log('[assign_orders] tx hash:', ordersTx, orders)
-      const elapsed = elapsedSeconds
-      const result = localAssignOrders(planet, colony, orders, elapsed)
-      planet = result.planet
-      colony = result.colony
-      lastEvents = result.events
+      await assignWorkers(account, planetId, lon, lat, workers)
+      await refreshColonyState(planetId)
       txStatus = ''
-      if (planet.population === 0) phase = 'gameover'
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally {
-      txPending = false
-    }
+    } finally { txPending = false }
   }
 
-  // Seed to use for planet rendering (falls back to test seed before spawn)
+  // ---------------------------------------------------------------------------
+  // Collect (tick)
+  // ---------------------------------------------------------------------------
+  async function handleCollect() {
+    if (!account) return
+    txPending = true
+    txStatus = 'Collecting resources...'
+    try {
+      await collect(account, planetId)
+      const [r, p] = await Promise.all([fetchResources(planetId), fetchPlanet(planetId)])
+      resources = r
+      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
+      if (p?.population === 0) phase = 'gameover'
+      await refreshColonyState(planetId)
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
   const DEV_SEED = 987654321
   const displaySeed = $derived(planet?.seed ?? DEV_SEED)
-
-  // Threat display (live, recomputes from current wall time)
-  let nowSeconds = $state(Math.floor(Date.now() / 1000))
-  setInterval(() => { nowSeconds = Math.floor(Date.now() / 1000) }, 10000)
-
-  const threat = $derived(
-    planet && colony
-      ? computeThreat(planet, colony, nowSeconds)
-      : 0
-  )
-  const elapsedSeconds = $derived(
-    planet ? Math.max(0, nowSeconds - (planet.lastActionAt ?? nowSeconds)) : 0
-  )
 </script>
 
 <div class="root">
@@ -323,7 +268,6 @@
   </Canvas>
 
   <div class="ui">
-    <!-- Header bar -->
     <div class="header">
       <span class="planet-label">PLANETS</span>
       {#if address}
@@ -338,50 +282,33 @@
       </div>
     {/if}
 
-    <!-- Phase: connect -->
     {#if phase === 'connect'}
       <div class="card center">
         <h2>PLANETS</h2>
         <p>An onchain colony builder.</p>
-        <button class="btn-primary" onclick={handleConnect}>
-          Connect Wallet
-        </button>
+        <button class="btn-primary" onclick={handleConnect}>Connect Wallet</button>
       </div>
 
-    <!-- Phase: mint -->
     {:else if phase === 'mint'}
       <div class="card">
         <h2>Name Your Planet</h2>
-        <input
-          class="name-input"
-          type="text"
-          placeholder="Planet name…"
-          maxlength="31"
-          bind:value={planetName}
-          onkeydown={(e) => e.key === 'Enter' && handleMint()}
-        />
+        <input class="name-input" type="text" placeholder="Planet name…" maxlength="31"
+          bind:value={planetName} onkeydown={(e) => e.key === 'Enter' && handleMint()} />
         <button class="btn-primary" onclick={handleMint} disabled={txPending || !planetName.trim()}>
           {txPending ? 'Minting…' : 'Mint Planet Token'}
         </button>
       </div>
 
-    <!-- Phase: spawn -->
     {:else if phase === 'spawn'}
       <div class="card">
         <h2>Settle Your World</h2>
-        <p class="dim">Token #{planetId?.toString()} ready. Name and spawn your colony world.</p>
-        <input
-          class="input"
-          bind:value={planetName}
-          placeholder="Planet name"
-          maxlength="31"
-        />
+        <p class="dim">Token #{planetId?.toString()} ready.</p>
+        <input class="name-input" bind:value={planetName} placeholder="Planet name" maxlength="31" />
         <button class="btn-primary" onclick={handleSpawn} disabled={txPending || !planetName.trim()}>
           {txPending ? 'Spawning…' : 'Spawn Planet'}
         </button>
       </div>
 
-    <!-- Phase: founding / managing / gameover -->
     {:else if planet}
       <div class="pop-bar">
         <span class="pop-label">Pop</span>
@@ -394,13 +321,18 @@
         {phase}
         {planet}
         {colony}
-        pendingLocation={pendingLocation}
-        lastEvents={lastEvents}
+        {resources}
+        {assigned}
+        {unassigned}
+        {buildings}
+        {pendingLocation}
+        {lastEvents}
         disabled={txPending}
         {buildMode}
-        pendingBuildSite={pendingBuildSite}
+        {pendingBuildSite}
         onconfirm={handleConfirmLocation}
-        onsubmit={handleSubmitOrders}
+        oncollect={handleCollect}
+        onassign={handleAssignWorkers}
         onbuildmode={handleBuildMode}
         onbuild={handleConfirmBuild}
       />
@@ -427,7 +359,6 @@
     max-width: 260px;
   }
 
-  /* Header */
   .header {
     display: flex;
     align-items: center;
@@ -440,18 +371,9 @@
     font-size: 0.72rem;
   }
 
-  .planet-label {
-    color: #445566;
-    letter-spacing: 0.12em;
-    flex: 1;
-  }
+  .planet-label { color: #445566; letter-spacing: 0.12em; flex: 1; }
+  .addr { color: #6ab4ff; font-size: 0.7rem; }
 
-  .addr {
-    color: #6ab4ff;
-    font-size: 0.7rem;
-  }
-
-  /* Status bar */
   .status {
     background: rgba(20, 40, 20, 0.9);
     border: 1px solid #2a5a3a;
@@ -462,13 +384,8 @@
     color: #6aff9a;
   }
 
-  .status.error {
-    background: rgba(40, 10, 10, 0.9);
-    border-color: #5a2a2a;
-    color: #ff6a6a;
-  }
+  .status.error { background: rgba(40, 10, 10, 0.9); border-color: #5a2a2a; color: #ff6a6a; }
 
-  /* Cards */
   .card {
     background: rgba(5, 5, 20, 0.9);
     border: 1px solid #1a2a3a;
@@ -480,30 +397,11 @@
     gap: 0.75rem;
   }
 
-  .card.center {
-    align-items: center;
-    text-align: center;
-  }
+  .card.center { align-items: center; text-align: center; }
+  .card h2 { font-size: 1.1rem; color: #8ecfff; letter-spacing: 0.15em; margin: 0; }
+  .card p { color: #667; font-size: 0.8rem; margin: 0; }
+  .dim { color: #556; font-size: 0.75rem; }
 
-  .card h2 {
-    font-size: 1.1rem;
-    color: #8ecfff;
-    letter-spacing: 0.15em;
-    margin: 0;
-  }
-
-  .card p {
-    color: #667;
-    font-size: 0.8rem;
-    margin: 0;
-  }
-
-  .dim {
-    color: #556;
-    font-size: 0.75rem;
-  }
-
-  /* Name input */
   .name-input {
     background: #0a0a1a;
     border: 1px solid #1a3a5a;
@@ -516,12 +414,8 @@
     box-sizing: border-box;
   }
 
-  .name-input:focus {
-    outline: none;
-    border-color: #2a6aaa;
-  }
+  .name-input:focus { outline: none; border-color: #2a6aaa; }
 
-  /* Pop bar */
   .pop-bar {
     display: flex;
     gap: 0.5rem;
@@ -533,20 +427,9 @@
     font-family: monospace;
   }
 
-  .pop-label {
-    font-size: 0.65rem;
-    color: #445566;
-    text-transform: uppercase;
-  }
+  .pop-label { font-size: 0.65rem; color: #445566; text-transform: uppercase; }
+  .pop-value { font-size: 0.85rem; color: #6ab4ff; font-weight: bold; margin-right: 0.5rem; }
 
-  .pop-value {
-    font-size: 0.85rem;
-    color: #6ab4ff;
-    font-weight: bold;
-    margin-right: 0.5rem;
-  }
-
-  /* Buttons */
   .btn-primary {
     background: #1a3a5a;
     border: 1px solid #2a5a8a;
@@ -560,14 +443,8 @@
     transition: background 0.15s;
   }
 
-  .btn-primary:hover:not(:disabled) {
-    background: #1f4a72;
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  .btn-primary:hover:not(:disabled) { background: #1f4a72; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .btn-sm {
     background: none;
@@ -580,8 +457,5 @@
     cursor: pointer;
   }
 
-  .btn-sm:hover {
-    color: #6ab4ff;
-    border-color: #2a4a6a;
-  }
+  .btn-sm:hover { color: #6ab4ff; border-color: #2a4a6a; }
 </style>

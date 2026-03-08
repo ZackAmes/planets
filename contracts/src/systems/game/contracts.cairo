@@ -4,27 +4,20 @@ use planets::models::building::BuildingType;
 
 #[starknet::interface]
 pub trait IGameSystems<T> {
-    /// Place the initial colony at grid position (col, row).
+    /// Found the colony at hex (col, row). Places Town Center and spawns starting colonists.
     fn found_colony(ref self: T, planet_id: u64, col: u32, row: u32);
 
-    /// Process one turn of the colony.
-    /// farming + mining + building + defense must sum to <= 100.
-    /// Production is multiplied by epochs elapsed since last call (1 epoch = 600 s).
-    fn assign_orders(
-        ref self: T,
-        planet_id: u64,
-        farming: u8,
-        mining: u8,
-        building: u8,
-        defense: u8,
-    );
-
-    /// Construct a building at the given lat/lon coordinates.
-    /// lon 0-3599, lat 0-1799 (tenths of a degree).
-    /// Costs minerals + build_points. Does not consume a turn.
+    /// Construct a building. Costs iron. Triggers a resource tick first.
     fn construct_building(
         ref self: T, planet_id: u64, lon: u16, lat: u16, building_type: BuildingType,
     );
+
+    /// Assign workers to a building. Triggers a tick first so dead colonists can't be assigned.
+    /// workers = desired total workers at this building (not a delta).
+    fn assign_workers(ref self: T, planet_id: u64, lon: u16, lat: u16, workers: u8);
+
+    /// Explicitly trigger a resource tick (collect production, process time-based events).
+    fn collect(ref self: T, planet_id: u64);
 }
 
 #[dojo::contract]
@@ -32,6 +25,12 @@ mod game_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
     use planets::models::colony::Colony;
+    use planets::models::resources::Resources;
+    use planets::models::colonists::{
+        Colonist, PlanetColonistCount,
+        ColonistsAssigned, ColonistAssignedEntry, ColonistAssignedIdx,
+        ColonistsUnassigned, ColonistUnassignedEntry, ColonistUnassignedIdx,
+    };
     use planets::models::building::{
         Building, BuildingType, PlanetBuildingCount, PlanetBuildingEntry,
     };
@@ -48,35 +47,33 @@ mod game_systems {
     // Constants
     // -----------------------------------------------------------------------
 
-    const STARTING_FOOD: u32 = 500;
-    const STARTING_MINERALS: u32 = 200;
-    const STARTING_DEFENSE: u32 = 20;
+    const STARTING_COLONISTS: u32 = 5;
+    const POP_PER_TC_LEVEL: u32 = 10;
 
-    /// One epoch = 600 seconds (10 minutes).
-    /// Production = per-epoch rate × elapsed epochs.
-    const EPOCH_SECONDS: u64 = 600;
+    const STARTING_WATER: u32 = 100;
+    const STARTING_IRON: u32 = 50;
+    const STARTING_DEFENSE: u32 = 10;
 
-    /// Cap accumulated epochs at 144 (24 hours).
-    /// Beyond this the colony doesn't gain more — but it also stops
-    /// accumulating threat, so the cap is symmetric.
-    const MAX_EPOCHS: u64 = 144;
+    const EPOCH_SECONDS: u64 = 600; // 10 min
+    const MAX_EPOCHS: u64 = 144;    // 24 h cap
 
-    // Building mineral + build_points costs
-    const FARM_MINERAL_COST: u32 = 100;
-    const FARM_BUILD_COST: u32 = 75;
-    const MINE_MINERAL_COST: u32 = 150;
-    const MINE_BUILD_COST: u32 = 75;
-    const BARRACKS_MINERAL_COST: u32 = 150;
-    const BARRACKS_BUILD_COST: u32 = 125;
-    const WORKSHOP_MINERAL_COST: u32 = 200;
-    const WORKSHOP_BUILD_COST: u32 = 150;
+    const MAX_BUILDINGS: u32 = 8;
 
-    // Base output per epoch before terrain bonus
-    // actual = base × (50 + terrain_bonus) / 100
-    const FARM_BASE_OUTPUT: u32 = 20;   // food / epoch
-    const MINE_BASE_OUTPUT: u32 = 15;   // minerals / epoch
-    const BARRACKS_BASE_OUTPUT: u32 = 20; // defense / epoch
-    const WORKSHOP_BASE_OUTPUT: u32 = 10; // build_points / epoch
+    // Iron costs
+    const WATER_WELL_COST: u32 = 50;
+    const IRON_MINE_COST: u32 = 80;
+    const HOUSE_COST: u32 = 100;
+    const BARRACKS_COST: u32 = 100;
+
+    // Base output per assigned worker per epoch (terrain-scaled at construct time)
+    const WATER_WELL_BASE: u32 = 10;
+    const IRON_MINE_BASE: u32 = 8;
+    const BARRACKS_BASE: u32 = 8;
+    const MAX_WORKERS: u8 = 3;
+
+    // Hex grid → lon/lat  (planet is 50 cols × 40 rows)
+    const LON_PER_HEX: u32 = 72; // 3600 / 50
+    const LAT_PER_HEX: u32 = 45; // 1800 / 40
 
     // -----------------------------------------------------------------------
     // Interface implementation
@@ -85,7 +82,7 @@ mod game_systems {
     #[abi(embed_v0)]
     impl GameSystemsImpl of super::IGameSystems<ContractState> {
         fn found_colony(ref self: ContractState, planet_id: u64, col: u32, row: u32) {
-            let mut world: WorldStorage = self.world(@DEFAULT_NS());
+            let mut world = self.world(@DEFAULT_NS());
             let token_address = _get_token_address(world);
             let token_id: felt252 = planet_id.into();
 
@@ -93,236 +90,73 @@ mod game_systems {
             pre_action(token_address, token_id);
 
             let mut planet: Planet = world.read_model(planet_id);
-            assert!(planet.population > 0, "Planets: planet not yet spawned");
+            assert!(planet.population > 0, "Planets: planet not spawned");
             assert!(col < planet.width, "Planets: col out of bounds");
             assert!(row < planet.height, "Planets: row out of bounds");
 
             let colony: Colony = world.read_model(planet_id);
             assert!(!colony.founded, "Planets: colony already founded");
 
-            // Terrain bonuses derived from planet seed + chosen location
-            let hash: felt252 = poseidon_hash_span(
-                array![planet.seed, col.into(), row.into()].span()
-            );
-            let h: u256 = hash.into();
-            let fertility: u8 = ((h % 101).try_into().unwrap_or(50));
-            let mineral_richness: u8 = (((h / 256) % 101).try_into().unwrap_or(50));
-
-            // Reset the production clock to colony founding time
-            let now = get_block_timestamp();
-            planet.last_action_at = now;
-            world.write_model(@planet);
+            // Place Town Center at the center of the chosen hex
+            let tc_lon: u16 = (col * LON_PER_HEX + LON_PER_HEX / 2).try_into().unwrap();
+            let tc_lat: u16 = (row * LAT_PER_HEX + LAT_PER_HEX / 2).try_into().unwrap();
 
             world
                 .write_model(
-                    @Colony {
+                    @Building {
                         planet_id,
-                        col,
-                        row,
-                        founded: true,
-                        food: STARTING_FOOD,
-                        minerals: STARTING_MINERALS,
-                        build_points: 0,
+                        lon: tc_lon,
+                        lat: tc_lat,
+                        building_type: 0,
+                        exists: true,
+                        terrain_bonus: 0,
+                        workers: 0,
+                        max_workers: 0,
+                        output_per_worker_epoch: 0,
+                    },
+                );
+            let mut bcount: PlanetBuildingCount = world.read_model(planet_id);
+            world
+                .write_model(
+                    @PlanetBuildingEntry {
+                        planet_id, index: bcount.count, lon: tc_lon, lat: tc_lat,
+                    },
+                );
+            bcount.count += 1;
+            world.write_model(@bcount);
+
+            let now = get_block_timestamp();
+
+            world.write_model(@Colony { planet_id, col, row, founded: true, tc_level: 1 });
+            world
+                .write_model(
+                    @Resources {
+                        planet_id,
+                        water: STARTING_WATER,
+                        iron: STARTING_IRON,
                         defense: STARTING_DEFENSE,
-                        fertility,
-                        mineral_richness,
-                        farms: 0,
-                        mines: 0,
-                        barracks: 0,
-                        workshops: 0,
-                        farm_output: 0,
-                        mine_output: 0,
-                        barracks_output: 0,
-                        workshop_output: 0,
-                    }
+                        last_updated_at: now,
+                    },
                 );
 
-            post_action(token_address, token_id);
-        }
+            // Initialise colonist tracking
+            world.write_model(@ColonistsAssigned { planet_id, count: 0 });
+            world.write_model(@ColonistsUnassigned { planet_id, count: 0 });
+            world.write_model(@PlanetColonistCount { planet_id, count: 0 });
 
-        fn assign_orders(
-            ref self: ContractState,
-            planet_id: u64,
-            farming: u8,
-            mining: u8,
-            building: u8,
-            defense: u8,
-        ) {
-            let mut world: WorldStorage = self.world(@DEFAULT_NS());
-            let token_address = _get_token_address(world);
-            let token_id: felt252 = planet_id.into();
-
-            assert_token_ownership(token_address, token_id);
-            pre_action(token_address, token_id);
-
-            let mut planet: Planet = world.read_model(planet_id);
-            let mut colony: Colony = world.read_model(planet_id);
-
-            assert!(colony.founded, "Planets: find a colony location first");
-            assert!(planet.population > 0, "Planets: colony is gone");
-
-            let total: u32 = farming.into() + mining.into() + building.into() + defense.into();
-            assert!(total <= 100, "Planets: orders exceed 100 percent");
-
-            // -------------------------------------------------------------------
-            // Time elapsed
-            // -------------------------------------------------------------------
-            let now: u64 = get_block_timestamp();
-            let elapsed: u64 = now - planet.last_action_at;
-            let epochs_raw: u64 = elapsed / EPOCH_SECONDS;
-            let epochs_capped: u64 = if epochs_raw > MAX_EPOCHS {
-                MAX_EPOCHS
-            } else {
-                epochs_raw
-            };
-            // Always process at least 1 epoch so immediate calls still produce
-            let epochs: u32 = if epochs_capped == 0 {
-                1_u32
-            } else {
-                epochs_capped.try_into().unwrap_or(MAX_EPOCHS.try_into().unwrap())
-            };
-
-            let pop = planet.population;
-
-            // -------------------------------------------------------------------
-            // Per-epoch production rates
-            //   Worker output  : population × allocation% × terrain / 10000
-            //   Building output: colony aggregate (pre-computed, terrain-adjusted)
-            // -------------------------------------------------------------------
-            let food_rate: u32 = pop
-                * farming.into()
-                * (100_u32 + colony.fertility.into())
-                / 10000_u32
-                + colony.farm_output;
-
-            let food_consumed_rate: u32 = pop; // 1 food per colonist per epoch
-
-            let mineral_rate: u32 = pop
-                * mining.into()
-                * (100_u32 + colony.mineral_richness.into())
-                / 10000_u32
-                + colony.mine_output;
-
-            let build_rate: u32 = pop * building.into() / 100_u32 + colony.workshop_output;
-
-            let defense_rate: u32 = pop * defense.into() / 100_u32 + colony.barracks_output;
-
-            // Scale by epochs
-            let food_prod: u32 = food_rate * epochs;
-            let food_consumed: u32 = food_consumed_rate * epochs;
-            let mineral_prod: u32 = mineral_rate * epochs;
-            let build_prog: u32 = build_rate * epochs;
-            let def_gain: u32 = defense_rate * epochs;
-
-            // -------------------------------------------------------------------
-            // Apply resources
-            // -------------------------------------------------------------------
-            let new_food = colony.food + food_prod;
-            colony.food = if new_food >= food_consumed {
-                new_food - food_consumed
-            } else {
-                0
-            };
-            colony.minerals += mineral_prod;
-            colony.build_points += build_prog;
-            colony.defense += def_gain;
-
-            // -------------------------------------------------------------------
-            // Population dynamics
-            // -------------------------------------------------------------------
-            if colony.food == 0 {
-                // Starvation — scale severity with time elapsed
-                let deaths_per_epoch = if pop / 10 > 1 {
-                    pop / 10
-                } else {
-                    1
-                };
-                let total_deaths = deaths_per_epoch * epochs / 2;
-                planet.population = if pop > total_deaths {
-                    pop - total_deaths
-                } else {
-                    0
-                };
-            } else if colony.food > pop * 10 * epochs {
-                // Surplus growth (single pass, capped)
-                let raw_growth = pop / 20;
-                let growth = if raw_growth > 10 {
-                    10_u32
-                } else if raw_growth < 1 {
-                    1_u32
-                } else {
-                    raw_growth
-                };
-                planet.population += growth;
-            }
-
-            // -------------------------------------------------------------------
-            // Threat level
-            //   time_component  : grows as colony ages (incentivises activity)
-            //   wealth_component: stockpile attracts raiders (incentivises spending)
-            //   size_component  : larger colonies are bigger targets
-            // -------------------------------------------------------------------
-            let time_alive: u64 = now - planet.spawned_at;
-            let time_epochs: u32 = ((time_alive / EPOCH_SECONDS) / 10)
-                .try_into()
-                .unwrap_or(255);
-            let wealth: u32 = (colony.food / 100) + (colony.minerals / 100);
-            let size_comp: u32 = planet.population / 20;
-            let threat_raw: u32 = time_epochs + wealth + size_comp;
-            let threat: u32 = if threat_raw > 100 {
-                100_u32
-            } else {
-                threat_raw
-            };
-
-            // -------------------------------------------------------------------
-            // Enemy attack — probability proportional to threat (max 80%)
-            // -------------------------------------------------------------------
-            let attack_prob: u32 = threat * 80 / 100;
-
-            let rng: felt252 = poseidon_hash_span(
-                array![planet.seed, planet.action_count.into(), now.into()].span()
-            );
-            let rng_u32: u32 = ((Into::<felt252, u256>::into(rng)) % 100)
-                .try_into()
-                .unwrap_or(50);
-
-            if rng_u32 < attack_prob {
-                // Attack strength: threat-based, grows with accumulated idle time
-                let attack_raw: u32 = threat * 3 + epochs;
-                let attack: u32 = if attack_raw > 250 {
-                    250_u32
-                } else {
-                    attack_raw
-                };
-
-                if attack > colony.defense {
-                    let excess = attack - colony.defense;
-                    let casualties_raw = excess / 2;
-                    let pop_cap = planet.population / 3;
-                    let casualties = if casualties_raw < pop_cap {
-                        casualties_raw
-                    } else {
-                        pop_cap
-                    };
-                    planet.population = if planet.population > casualties {
-                        planet.population - casualties
-                    } else {
-                        0
-                    };
-                    let def_damage = attack / 2;
-                    colony.defense = if colony.defense > def_damage {
-                        colony.defense - def_damage
-                    } else {
-                        0
-                    };
+            // Spawn starting colonists into the unassigned pool
+            let mut i: u32 = 0;
+            loop {
+                if i >= STARTING_COLONISTS {
+                    break;
                 }
-            }
+                _spawn_colonist(ref world, planet_id);
+                i += 1;
+            };
 
+            planet.population = STARTING_COLONISTS;
             planet.last_action_at = now;
-            planet.action_count += 1;
             world.write_model(@planet);
-            world.write_model(@colony);
 
             post_action(token_address, token_id);
         }
@@ -334,77 +168,71 @@ mod game_systems {
             lat: u16,
             building_type: BuildingType,
         ) {
-            let mut world: WorldStorage = self.world(@DEFAULT_NS());
+            let mut world = self.world(@DEFAULT_NS());
             let token_address = _get_token_address(world);
             let token_id: felt252 = planet_id.into();
 
             assert_token_ownership(token_address, token_id);
+            _tick(ref world, planet_id);
 
             let planet: Planet = world.read_model(planet_id);
-            let mut colony: Colony = world.read_model(planet_id);
-            assert!(colony.founded, "Planets: find a colony location first");
+            let colony: Colony = world.read_model(planet_id);
+            assert!(colony.founded, "Planets: found a colony first");
+            assert!(building_type != BuildingType::TownCenter, "Planets: TC is auto-placed");
+
+            let bcount: PlanetBuildingCount = world.read_model(planet_id);
+            assert!(bcount.count <= MAX_BUILDINGS, "Planets: building limit reached");
 
             assert!(lon < 3600, "Planets: lon out of range");
             assert!(lat < 1800, "Planets: lat out of range");
 
             let existing: Building = world.read_model((planet_id, lon, lat));
-            assert!(!existing.exists, "Planets: location already occupied");
+            assert!(!existing.exists, "Planets: location occupied");
 
-            // Cost
-            let (mineral_cost, build_cost) = match building_type {
-                BuildingType::Farm => (FARM_MINERAL_COST, FARM_BUILD_COST),
-                BuildingType::Mine => (MINE_MINERAL_COST, MINE_BUILD_COST),
-                BuildingType::Barracks => (BARRACKS_MINERAL_COST, BARRACKS_BUILD_COST),
-                BuildingType::Workshop => (WORKSHOP_MINERAL_COST, WORKSHOP_BUILD_COST),
+            let iron_cost: u32 = match building_type {
+                BuildingType::TownCenter => 0,
+                BuildingType::WaterWell => WATER_WELL_COST,
+                BuildingType::IronMine => IRON_MINE_COST,
+                BuildingType::House => HOUSE_COST,
+                BuildingType::Barracks => BARRACKS_COST,
             };
 
-            assert!(colony.minerals >= mineral_cost, "Planets: insufficient minerals");
-            assert!(colony.build_points >= build_cost, "Planets: insufficient build points");
+            let mut resources: Resources = world.read_model(planet_id);
+            assert!(resources.iron >= iron_cost, "Planets: insufficient iron");
+            resources.iron -= iron_cost;
 
-            colony.minerals -= mineral_cost;
-            colony.build_points -= build_cost;
-
-            // Terrain type from the 2-D hash noise grid (seamless, mirrors client).
             let building_type_u8: u8 = match building_type {
-                BuildingType::Farm => 0,
-                BuildingType::Mine => 1,
-                BuildingType::Barracks => 2,
-                BuildingType::Workshop => 3,
+                BuildingType::TownCenter => 0,
+                BuildingType::WaterWell => 1,
+                BuildingType::IronMine => 2,
+                BuildingType::House => 3,
+                BuildingType::Barracks => 4,
             };
-            let terrain_type: u32 = planets::libs::terrain::terrain_at(planet.seed, lon, lat);
-            let terrain_bonus: u8 = planets::libs::terrain::terrain_bonus(
+
+            let terrain_type = planets::libs::terrain::terrain_at(planet.seed, lon, lat);
+            let terrain_bonus = planets::libs::terrain::terrain_bonus(
                 building_type_u8, terrain_type,
             );
 
-            // output = base × (50 + bonus) / 100
-            // At bonus=0  : 50% of base (poor terrain still produces)
-            // At bonus=100: 150% of base (ideal terrain)
             let base: u32 = match building_type {
-                BuildingType::Farm => FARM_BASE_OUTPUT,
-                BuildingType::Mine => MINE_BASE_OUTPUT,
-                BuildingType::Barracks => BARRACKS_BASE_OUTPUT,
-                BuildingType::Workshop => WORKSHOP_BASE_OUTPUT,
+                BuildingType::TownCenter => 0,
+                BuildingType::WaterWell => WATER_WELL_BASE,
+                BuildingType::IronMine => IRON_MINE_BASE,
+                BuildingType::House => 0,
+                BuildingType::Barracks => BARRACKS_BASE,
             };
-            let output_per_epoch: u32 = base * (50_u32 + terrain_bonus.into()) / 100_u32;
+            let output_per_worker_epoch: u32 = if base == 0 {
+                0
+            } else {
+                base * (50_u32 + terrain_bonus.into()) / 100_u32
+            };
 
-            // Update colony building counts and aggregate outputs
-            match building_type {
-                BuildingType::Farm => {
-                    colony.farms += 1;
-                    colony.farm_output += output_per_epoch;
-                },
-                BuildingType::Mine => {
-                    colony.mines += 1;
-                    colony.mine_output += output_per_epoch;
-                },
-                BuildingType::Barracks => {
-                    colony.barracks += 1;
-                    colony.barracks_output += output_per_epoch;
-                },
-                BuildingType::Workshop => {
-                    colony.workshops += 1;
-                    colony.workshop_output += output_per_epoch;
-                },
+            let max_workers: u8 = match building_type {
+                BuildingType::TownCenter => 0,
+                BuildingType::WaterWell => MAX_WORKERS,
+                BuildingType::IronMine => MAX_WORKERS,
+                BuildingType::House => 0,
+                BuildingType::Barracks => MAX_WORKERS,
             };
 
             world
@@ -416,24 +244,452 @@ mod game_systems {
                         building_type: building_type_u8,
                         exists: true,
                         terrain_bonus,
-                        output_per_epoch,
-                    }
+                        workers: 0,
+                        max_workers,
+                        output_per_worker_epoch,
+                    },
                 );
 
-            // Update building index
             let mut bcount: PlanetBuildingCount = world.read_model(planet_id);
-            let index = bcount.count;
-            world.write_model(@PlanetBuildingEntry { planet_id, index, lon, lat });
-            bcount.count = index + 1;
+            world.write_model(@PlanetBuildingEntry { planet_id, index: bcount.count, lon, lat });
+            bcount.count += 1;
             world.write_model(@bcount);
 
-            world.write_model(@colony);
+            world.write_model(@resources);
+        }
+
+        fn assign_workers(
+            ref self: ContractState, planet_id: u64, lon: u16, lat: u16, workers: u8,
+        ) {
+            let mut world = self.world(@DEFAULT_NS());
+            let token_address = _get_token_address(world);
+            let token_id: felt252 = planet_id.into();
+
+            assert_token_ownership(token_address, token_id);
+
+            // Tick first — dead colonists are removed before we check availability
+            _tick(ref world, planet_id);
+
+            let mut building: Building = world.read_model((planet_id, lon, lat));
+            assert!(building.exists, "Planets: building not found");
+            assert!(building.max_workers > 0, "Planets: building has no worker slots");
+            assert!(workers <= building.max_workers, "Planets: exceeds building capacity");
+
+            let old: u8 = building.workers;
+
+            if workers > old {
+                // Adding workers — pop from end of unassigned, push to assigned
+                let delta: u32 = (workers - old).into();
+                let ua_check: ColonistsUnassigned = world.read_model(planet_id);
+                assert!(ua_check.count >= delta, "Planets: not enough idle colonists");
+
+                let mut i: u32 = 0;
+                loop {
+                    if i >= delta {
+                        break;
+                    }
+                    let ua: ColonistsUnassigned = world.read_model(planet_id);
+                    let last_idx = ua.count - 1;
+                    let entry: ColonistUnassignedEntry = world.read_model((planet_id, last_idx));
+                    let cid = entry.colonist_id;
+                    _remove_from_unassigned(ref world, planet_id, cid);
+                    _add_to_assigned(ref world, planet_id, cid);
+                    world
+                        .write_model(
+                            @Colonist {
+                                planet_id,
+                                colonist_id: cid,
+                                is_assigned: true,
+                                building_lon: lon,
+                                building_lat: lat,
+                            },
+                        );
+                    i += 1;
+                };
+            } else if workers < old {
+                // Removing workers — find colonists at this building and move to unassigned.
+                // Iterates the assigned list; O(assigned.count) reads in worst case (max 50).
+                let delta: u8 = old - workers;
+                let mut found: u8 = 0;
+                let mut i: u32 = 0;
+                loop {
+                    if found >= delta {
+                        break;
+                    }
+                    let assigned: ColonistsAssigned = world.read_model(planet_id);
+                    if i >= assigned.count {
+                        break;
+                    }
+                    let entry: ColonistAssignedEntry = world.read_model((planet_id, i));
+                    let colonist: Colonist = world.read_model((planet_id, entry.colonist_id));
+                    if colonist.building_lon == lon && colonist.building_lat == lat {
+                        let cid = entry.colonist_id;
+                        _remove_from_assigned(ref world, planet_id, cid);
+                        _add_to_unassigned(ref world, planet_id, cid);
+                        world
+                            .write_model(
+                                @Colonist {
+                                    planet_id,
+                                    colonist_id: cid,
+                                    is_assigned: false,
+                                    building_lon: 0,
+                                    building_lat: 0,
+                                },
+                            );
+                        found += 1;
+                        // Don't increment i: swap-and-pop placed a new entry at position i
+                    } else {
+                        i += 1;
+                    }
+                };
+            }
+
+            building.workers = workers;
+            world.write_model(@building);
+        }
+
+        fn collect(ref self: ContractState, planet_id: u64) {
+            let mut world = self.world(@DEFAULT_NS());
+            let token_address = _get_token_address(world);
+            let token_id: felt252 = planet_id.into();
+
+            assert_token_ownership(token_address, token_id);
+            pre_action(token_address, token_id);
+
+            let colony: Colony = world.read_model(planet_id);
+            assert!(colony.founded, "Planets: no colony yet");
+
+            _tick(ref world, planet_id);
+
+            post_action(token_address, token_id);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Private helpers
+    // Tick: compute rates from buildings, apply production, handle deaths
     // -----------------------------------------------------------------------
+
+    fn _tick(ref world: WorldStorage, planet_id: u64) {
+        let mut resources: Resources = world.read_model(planet_id);
+        let mut planet: Planet = world.read_model(planet_id);
+
+        let now = get_block_timestamp();
+        let elapsed = now - resources.last_updated_at;
+        let epochs_raw = elapsed / EPOCH_SECONDS;
+
+        if epochs_raw == 0 {
+            return;
+        }
+
+        let epochs: u32 = if epochs_raw > MAX_EPOCHS {
+            MAX_EPOCHS.try_into().unwrap()
+        } else {
+            epochs_raw.try_into().unwrap()
+        };
+
+        // Compute production rates by iterating buildings
+        let bcount: PlanetBuildingCount = world.read_model(planet_id);
+        let mut water_rate: u32 = 0;
+        let mut iron_rate: u32 = 0;
+        let mut defense_rate: u32 = 0;
+
+        let mut i: u32 = 0;
+        loop {
+            if i >= bcount.count {
+                break;
+            }
+            let entry: PlanetBuildingEntry = world.read_model((planet_id, i));
+            let b: Building = world.read_model((planet_id, entry.lon, entry.lat));
+            let w: u32 = b.workers.into();
+            if b.building_type == 1 {
+                water_rate += w * b.output_per_worker_epoch;
+            } else if b.building_type == 2 {
+                iron_rate += w * b.output_per_worker_epoch;
+            } else if b.building_type == 4 {
+                defense_rate += w * b.output_per_worker_epoch;
+            }
+            i += 1;
+        };
+
+        resources.iron += iron_rate * epochs;
+        resources.defense += defense_rate * epochs;
+
+        // Water: produce then consume (1 per colonist per epoch)
+        let water_produced = water_rate * epochs;
+        let water_consumed = planet.population * epochs;
+        let available = resources.water + water_produced;
+
+        if available >= water_consumed {
+            resources.water = available - water_consumed;
+
+            // Population growth if comfortable surplus and below cap
+            let colony: Colony = world.read_model(planet_id);
+            let max_pop: u32 = colony.tc_level.into() * POP_PER_TC_LEVEL;
+            if resources.water > planet.population * 5 && planet.population < max_pop {
+                let raw_growth = planet.population / 10;
+                let growth: u32 = if raw_growth < 1 {
+                    1
+                } else if raw_growth > 3 {
+                    3
+                } else {
+                    raw_growth
+                };
+                let to_spawn: u32 = if planet.population + growth > max_pop {
+                    max_pop - planet.population
+                } else {
+                    growth
+                };
+                let mut j: u32 = 0;
+                loop {
+                    if j >= to_spawn {
+                        break;
+                    }
+                    _spawn_colonist(ref world, planet_id);
+                    j += 1;
+                };
+                planet.population += to_spawn;
+            }
+        } else {
+            // Water shortage — colonists die; unassigned first
+            resources.water = 0;
+            let deaths_per_epoch: u32 = if planet.population / 10 < 1 {
+                1
+            } else {
+                planet.population / 10
+            };
+            let total_deaths: u32 = if deaths_per_epoch * epochs / 2 > planet.population {
+                planet.population
+            } else {
+                deaths_per_epoch * epochs / 2
+            };
+
+            _kill_random(ref world, planet_id, total_deaths, planet.seed, planet.action_count, now);
+            planet.population =
+                if planet.population > total_deaths {
+                    planet.population - total_deaths
+                } else {
+                    0
+                };
+        }
+
+        // Threat and raids
+        let time_alive = now - planet.spawned_at;
+        let time_comp: u32 = ((time_alive / EPOCH_SECONDS) / 10).try_into().unwrap_or(255);
+        let wealth_comp = resources.iron / 100;
+        let size_comp = planet.population / 5;
+        let threat_raw = time_comp + wealth_comp + size_comp;
+        let threat: u32 = if threat_raw > 100 {
+            100
+        } else {
+            threat_raw
+        };
+
+        let rng: felt252 = poseidon_hash_span(
+            array![planet.seed, planet.action_count.into(), now.into()].span(),
+        );
+        let rng_pct: u32 = (Into::<felt252, u256>::into(rng) % 100).try_into().unwrap_or(50);
+
+        if rng_pct < threat * 80 / 100 {
+            let attack: u32 = if threat * 2 + epochs > 100 {
+                100
+            } else {
+                threat * 2 + epochs
+            };
+            if attack > resources.defense {
+                let excess = attack - resources.defense;
+                let casualties: u32 = if excess / 3 > planet.population / 3 {
+                    planet.population / 3
+                } else {
+                    excess / 3
+                };
+                if casualties > 0 {
+                    _kill_random(
+                        ref world,
+                        planet_id,
+                        casualties,
+                        planet.seed,
+                        planet.action_count + 1000,
+                        now,
+                    );
+                    planet.population =
+                        if planet.population > casualties {
+                            planet.population - casualties
+                        } else {
+                            0
+                        };
+                }
+                resources.defense =
+                    if resources.defense > attack / 2 {
+                        resources.defense - attack / 2
+                    } else {
+                        0
+                    };
+            }
+        }
+
+        // Advance time (align to epoch boundary to prevent drift)
+        resources.last_updated_at += epochs_raw * EPOCH_SECONDS;
+        planet.action_count += 1;
+        planet.last_action_at = now;
+
+        world.write_model(@resources);
+        world.write_model(@planet);
+    }
+
+    // -----------------------------------------------------------------------
+    // Kill colonists randomly (unassigned first, then assigned)
+    // -----------------------------------------------------------------------
+
+    fn _kill_random(
+        ref world: WorldStorage,
+        planet_id: u64,
+        count: u32,
+        seed: felt252,
+        base_nonce: u32,
+        now: u64,
+    ) {
+        let mut left = count;
+        let mut nonce = base_nonce;
+
+        // Kill unassigned first
+        loop {
+            if left == 0 {
+                break;
+            }
+            let ua: ColonistsUnassigned = world.read_model(planet_id);
+            if ua.count == 0 {
+                break;
+            }
+            let rng: felt252 = poseidon_hash_span(
+                array![seed, nonce.into(), now.into()].span(),
+            );
+            let victim_idx: u32 = (Into::<felt252, u256>::into(rng) % ua.count.into())
+                .try_into()
+                .unwrap_or(0);
+            let entry: ColonistUnassignedEntry = world.read_model((planet_id, victim_idx));
+            _remove_from_unassigned(ref world, planet_id, entry.colonist_id);
+            nonce += 1;
+            left -= 1;
+        };
+
+        // Kill assigned if still needed; also decrement the building's worker count
+        loop {
+            if left == 0 {
+                break;
+            }
+            let assigned: ColonistsAssigned = world.read_model(planet_id);
+            if assigned.count == 0 {
+                break;
+            }
+            let rng: felt252 = poseidon_hash_span(
+                array![seed, nonce.into(), now.into()].span(),
+            );
+            let victim_idx: u32 = (Into::<felt252, u256>::into(rng) % assigned.count.into())
+                .try_into()
+                .unwrap_or(0);
+            let entry: ColonistAssignedEntry = world.read_model((planet_id, victim_idx));
+            let colonist: Colonist = world.read_model((planet_id, entry.colonist_id));
+            let mut building: Building = world
+                .read_model((planet_id, colonist.building_lon, colonist.building_lat));
+            if building.workers > 0 {
+                building.workers -= 1;
+                world.write_model(@building);
+            }
+            _remove_from_assigned(ref world, planet_id, entry.colonist_id);
+            nonce += 1;
+            left -= 1;
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Colonist list helpers (O(1) add/remove via swap-and-pop)
+    // -----------------------------------------------------------------------
+
+    fn _spawn_colonist(ref world: WorldStorage, planet_id: u64) {
+        let mut pcc: PlanetColonistCount = world.read_model(planet_id);
+        let cid = pcc.count;
+        world
+            .write_model(
+                @Colonist {
+                    planet_id, colonist_id: cid, is_assigned: false, building_lon: 0, building_lat: 0,
+                },
+            );
+        _add_to_unassigned(ref world, planet_id, cid);
+        pcc.count += 1;
+        world.write_model(@pcc);
+    }
+
+    fn _add_to_unassigned(ref world: WorldStorage, planet_id: u64, colonist_id: u32) {
+        let mut ua: ColonistsUnassigned = world.read_model(planet_id);
+        let idx = ua.count;
+        world.write_model(@ColonistUnassignedEntry { planet_id, index: idx, colonist_id });
+        world.write_model(@ColonistUnassignedIdx { planet_id, colonist_id, index: idx });
+        ua.count += 1;
+        world.write_model(@ua);
+    }
+
+    fn _remove_from_unassigned(ref world: WorldStorage, planet_id: u64, colonist_id: u32) {
+        let mut ua: ColonistsUnassigned = world.read_model(planet_id);
+        if ua.count == 0 {
+            return;
+        }
+        let idx_model: ColonistUnassignedIdx = world.read_model((planet_id, colonist_id));
+        let idx = idx_model.index;
+        let last_idx = ua.count - 1;
+        if idx < last_idx {
+            let last: ColonistUnassignedEntry = world.read_model((planet_id, last_idx));
+            world
+                .write_model(
+                    @ColonistUnassignedEntry {
+                        planet_id, index: idx, colonist_id: last.colonist_id,
+                    },
+                );
+            world
+                .write_model(
+                    @ColonistUnassignedIdx {
+                        planet_id, colonist_id: last.colonist_id, index: idx,
+                    },
+                );
+        }
+        ua.count = last_idx;
+        world.write_model(@ua);
+    }
+
+    fn _add_to_assigned(ref world: WorldStorage, planet_id: u64, colonist_id: u32) {
+        let mut assigned: ColonistsAssigned = world.read_model(planet_id);
+        let idx = assigned.count;
+        world.write_model(@ColonistAssignedEntry { planet_id, index: idx, colonist_id });
+        world.write_model(@ColonistAssignedIdx { planet_id, colonist_id, index: idx });
+        assigned.count += 1;
+        world.write_model(@assigned);
+    }
+
+    fn _remove_from_assigned(ref world: WorldStorage, planet_id: u64, colonist_id: u32) {
+        let mut assigned: ColonistsAssigned = world.read_model(planet_id);
+        if assigned.count == 0 {
+            return;
+        }
+        let idx_model: ColonistAssignedIdx = world.read_model((planet_id, colonist_id));
+        let idx = idx_model.index;
+        let last_idx = assigned.count - 1;
+        if idx < last_idx {
+            let last: ColonistAssignedEntry = world.read_model((planet_id, last_idx));
+            world
+                .write_model(
+                    @ColonistAssignedEntry {
+                        planet_id, index: idx, colonist_id: last.colonist_id,
+                    },
+                );
+            world
+                .write_model(
+                    @ColonistAssignedIdx {
+                        planet_id, colonist_id: last.colonist_id, index: idx,
+                    },
+                );
+        }
+        assigned.count = last_idx;
+        world.write_model(@assigned);
+    }
 
     fn _get_token_address(world: WorldStorage) -> ContractAddress {
         let (game_token_systems_address, _) = world.dns(@"game_token_systems").unwrap();
@@ -442,5 +698,4 @@ mod game_systems {
         };
         minigame_dispatcher.token_address()
     }
-
 }

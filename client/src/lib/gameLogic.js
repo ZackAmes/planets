@@ -12,13 +12,14 @@ export const EPOCH_SECONDS = 600   // 10 minutes per epoch
 export const MAX_EPOCHS    = 144   // cap at 24 hours
 
 // Building type constants (must match BuildingType enum discriminants in Cairo)
-export const BUILDING_TYPES = { FARM: 0, MINE: 1, BARRACKS: 2, WORKSHOP: 3 }
+export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOUSE: 3, BARRACKS: 4 }
 
 export const BUILDING_INFO = [
-  { type: 0, name: 'Farm',     color: '#4aaa44', mineralCost: 100, buildCost: 75,  baseOutput: 20, resource: 'food',        description: 'Food / epoch (terrain: grassland > forest > marsh)' },
-  { type: 1, name: 'Mine',     color: '#aaaaaa', mineralCost: 150, buildCost: 75,  baseOutput: 15, resource: 'minerals',    description: 'Minerals / epoch (terrain: mountain > highland > desert)' },
-  { type: 2, name: 'Barracks', color: '#4466ff', mineralCost: 150, buildCost: 125, baseOutput: 20, resource: 'defense',     description: 'Defense / epoch (terrain: mountain > highland)' },
-  { type: 3, name: 'Workshop', color: '#ffaa22', mineralCost: 200, buildCost: 150, baseOutput: 10, resource: 'buildPoints', description: 'Build pts / epoch (terrain: forest > grassland)' },
+  { type: 0, name: 'Town Center', color: '#ffdd44', ironCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Colony hub. Increases population cap per level.' },
+  { type: 1, name: 'Water Well',  color: '#44aaff', ironCost: 50,  maxWorkers: 3, baseOutput: 10, resource: 'water',   description: 'Water / worker / epoch (terrain: coastal > beach > scrubland)' },
+  { type: 2, name: 'Iron Mine',   color: '#aaaaaa', ironCost: 80,  maxWorkers: 3, baseOutput: 8,  resource: 'iron',    description: 'Iron / worker / epoch (terrain: mountain > highland > desert)' },
+  { type: 3, name: 'House',       color: '#44ff88', ironCost: 100, maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Adds 20 to population cap.' },
+  { type: 4, name: 'Barracks',    color: '#4466ff', ironCost: 100, maxWorkers: 3, baseOutput: 8,  resource: 'defense', description: 'Defense / worker / epoch (terrain: mountain > highland)' },
 ]
 
 // Terrain type indices (match terrain.cairo)
@@ -99,63 +100,39 @@ export function terrainName(terrainType) {
 
 /**
  * Terrain bonus (0-100) for a building type on a given terrain.
- * Mirrors _terrain_bonus() in game/contracts.cairo.
+ * Mirrors terrain_bonus() in terrain.cairo.
  */
 export function terrainBonus(buildingType, terrainType) {
-  if (buildingType === BUILDING_TYPES.FARM) {
-    if (terrainType === 2) return 100   // grassland
-    if (terrainType === 3) return 60    // forest
-    if (terrainType === 9) return 40    // marsh
-    if (terrainType === 8) return 30    // beach
-    if (terrainType === 5) return 20    // highland
-    if (terrainType === 4) return 10    // desert
-    return 5
+  if (buildingType === BUILDING_TYPES.WATER_WELL) {
+    if (terrainType === 1) return 100  // shallow ocean (coastal)
+    if (terrainType === 8) return 80   // beach
+    if (terrainType === 9) return 60   // scrubland
+    if (terrainType === 2) return 40   // grassland
+    if (terrainType === 3) return 30   // forest
+    return 10
   }
-  if (buildingType === BUILDING_TYPES.MINE) {
-    if (terrainType === 6) return 100   // mountain
-    if (terrainType === 5) return 70    // highland
-    if (terrainType === 4) return 40    // desert
-    if (terrainType === 3) return 20    // forest
+  if (buildingType === BUILDING_TYPES.IRON_MINE) {
+    if (terrainType === 6) return 100  // mountain
+    if (terrainType === 5) return 70   // highland
+    if (terrainType === 4) return 40   // desert
+    if (terrainType === 3) return 20   // forest
     return 5
   }
   if (buildingType === BUILDING_TYPES.BARRACKS) {
-    if (terrainType === 6) return 60    // mountain
-    if (terrainType === 5) return 50    // highland
-    if (terrainType === 7) return 40    // snow
-    if (terrainType === 3) return 30    // forest
+    if (terrainType === 6) return 60   // mountain
+    if (terrainType === 5) return 50   // highland
+    if (terrainType === 7) return 40   // snow
+    if (terrainType === 3) return 30   // forest
     return 20
   }
-  // Workshop
-  if (terrainType === 3) return 50      // forest
-  if (terrainType === 2) return 40      // grassland
-  if (terrainType === 8) return 30      // beach
-  return 20
+  return 0  // TownCenter and House have no terrain bonus
 }
 
-/** output per epoch = base × (50 + bonus) / 100 */
-export function buildingOutputPerEpoch(buildingType, bonus) {
-  const base = BUILDING_INFO[buildingType].baseOutput
+/** output per worker per epoch = base * (50 + bonus) / 100 */
+export function buildingOutputPerWorkerEpoch(buildingType, bonus) {
+  const base = BUILDING_INFO[buildingType]?.baseOutput ?? 0
+  if (base === 0) return 0
   return Math.floor(base * (50 + bonus) / 100)
-}
-
-// ---------------------------------------------------------------------------
-// Colony founding
-// ---------------------------------------------------------------------------
-
-export function deriveTerrainBonuses(seed, col, row) {
-  const h = clientHash(clientHash(seed, col), row)
-  return { fertility: h % 101, mineralRichness: Math.floor(h / 256) % 101 }
-}
-
-export function foundColony(planet, col, row) {
-  const { fertility, mineralRichness } = deriveTerrainBonuses(planet.seed, col, row)
-  return {
-    col, row, founded: true,
-    food: 500, minerals: 200, buildPoints: 0, defense: 20,
-    fertility, mineralRichness,
-    farms: 0, mines: 0, barracks: 0, workshops: 0,
-    farmOutput: 0, mineOutput: 0, barracksOutput: 0, workshopOutput: 0,
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,14 +140,13 @@ export function foundColony(planet, col, row) {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the threat level (0–100).
- * Mirrors the assign_orders threat calculation in game/contracts.cairo.
+ * Compute the threat level (0-100).
+ * Mirrors the threat calculation in game/contracts.cairo.
  */
-export function computeThreat(planet, colony, nowSeconds) {
-  const EPOCH = EPOCH_SECONDS
+export function computeThreat(planet, resources, nowSeconds) {
   const timeAlive = nowSeconds - (planet.spawnedAt ?? 0)
-  const timeComp   = Math.floor((timeAlive / EPOCH) / 10)
-  const wealthComp = Math.floor((colony.food + colony.minerals) / 100)
+  const timeComp   = Math.floor((timeAlive / EPOCH_SECONDS) / 10)
+  const wealthComp = Math.floor((resources?.iron ?? 0) / 100)
   const sizeComp   = Math.floor(planet.population / 20)
   return Math.min(100, timeComp + wealthComp + sizeComp)
 }
@@ -183,122 +159,20 @@ export function attackProbability(threat) {
 // Building construction preview
 // ---------------------------------------------------------------------------
 
-export function previewConstruct(colony, buildingType, seedJs, lon) {
+export function previewConstruct(resources, buildingType, seedFull, lon, lat) {
   const info = BUILDING_INFO[buildingType]
   if (!info) return { canBuild: false, reason: 'Unknown building type' }
 
-  const terrain = terrainAt(seedJs, lon)
+  const terrain = terrainAt(seedFull, lon, lat)
   const bonus   = terrainBonus(buildingType, terrain)
-  const output  = buildingOutputPerEpoch(buildingType, bonus)
+  const output  = buildingOutputPerWorkerEpoch(buildingType, bonus)
 
-  const insufficient = []
-  if (colony.minerals < info.mineralCost)
-    insufficient.push(`${info.mineralCost} minerals (have ${colony.minerals})`)
-  if (colony.buildPoints < info.buildCost)
-    insufficient.push(`${info.buildCost} build pts (have ${colony.buildPoints})`)
-
+  const canBuild = (resources?.iron ?? 0) >= info.ironCost
   return {
-    canBuild: insufficient.length === 0,
-    reason: insufficient.length ? `Need: ${insufficient.join(', ')}` : null,
-    mineralCost: info.mineralCost,
-    buildCost: info.buildCost,
+    canBuild,
+    reason: canBuild ? null : `Need ${info.ironCost} iron (have ${resources?.iron ?? 0})`,
+    ironCost: info.ironCost,
     terrain, terrainName: terrainName(terrain), bonus, output,
-  }
-}
-
-export function applyConstruct(colony, buildingType, terrainBonusVal, outputPerEpoch) {
-  const info = BUILDING_INFO[buildingType]
-  const next = {
-    ...colony,
-    minerals:    colony.minerals    - info.mineralCost,
-    buildPoints: colony.buildPoints - info.buildCost,
-  }
-  if (buildingType === BUILDING_TYPES.FARM)     { next.farms++;     next.farmOutput     += outputPerEpoch }
-  if (buildingType === BUILDING_TYPES.MINE)     { next.mines++;     next.mineOutput     += outputPerEpoch }
-  if (buildingType === BUILDING_TYPES.BARRACKS) { next.barracks++;  next.barracksOutput += outputPerEpoch }
-  if (buildingType === BUILDING_TYPES.WORKSHOP) { next.workshops++; next.workshopOutput += outputPerEpoch }
-  return next
-}
-
-// ---------------------------------------------------------------------------
-// Turn simulation
-// ---------------------------------------------------------------------------
-
-/**
- * Process one turn of orders given elapsed time (seconds since last action).
- * Returns { planet, colony, events, production, threat, attackProb }.
- */
-export function assignOrders(planet, colony, { farming, mining, building, defense }, elapsedSeconds) {
-  const total = farming + mining + building + defense
-  if (total > 100) throw new Error('Orders exceed 100%')
-
-  const elapsed = elapsedSeconds ?? EPOCH_SECONDS
-  const epochsRaw = Math.floor(elapsed / EPOCH_SECONDS)
-  const epochs = Math.max(1, Math.min(MAX_EPOCHS, epochsRaw))
-
-  const events = []
-  let pop = planet.population
-
-  // Per-epoch rates
-  const foodRate     = Math.floor((pop * farming * (100 + colony.fertility)) / 10000) + (colony.farmOutput ?? 0)
-  const foodConsumed = pop
-  const mineralRate  = Math.floor((pop * mining * (100 + colony.mineralRichness)) / 10000) + (colony.mineOutput ?? 0)
-  const buildRate    = Math.floor((pop * building) / 100) + (colony.workshopOutput ?? 0)
-  const defRate      = Math.floor((pop * defense) / 100) + (colony.barracksOutput ?? 0)
-
-  // Scale by epochs
-  const foodProd    = foodRate * epochs
-  const foodUsed    = foodConsumed * epochs
-  const mineralProd = mineralRate * epochs
-  const buildProg   = buildRate * epochs
-  const defGain     = defRate * epochs
-
-  // Apply resources
-  const rawFood = colony.food + foodProd
-  let food = rawFood >= foodUsed ? rawFood - foodUsed : 0
-  const minerals   = colony.minerals + mineralProd
-  const buildPoints = (colony.buildPoints ?? 0) + buildProg
-  let colonyDefense = colony.defense + defGain
-
-  // Population
-  if (food === 0) {
-    const deathsPerEpoch = Math.max(1, Math.floor(pop / 10))
-    const totalDeaths    = Math.floor(deathsPerEpoch * epochs / 2)
-    pop = Math.max(0, pop - totalDeaths)
-    events.push(`Starvation — ${totalDeaths} colonists lost over ${epochs} epoch${epochs > 1 ? 's' : ''}.`)
-  } else if (food > pop * 10 * epochs) {
-    const growth = Math.min(10, Math.max(1, Math.floor(pop / 20)))
-    pop += growth
-    events.push(`Population grew by ${growth}.`)
-  }
-
-  // Threat & attack
-  const nowSeconds = (planet.lastActionAt ?? 0) + elapsed
-  const threat = computeThreat({ ...planet, population: pop }, { ...colony, food, minerals }, nowSeconds)
-  const attackProb = attackProbability(threat)
-  const rng = clientHash(planet.seed, planet.actionCount) % 100
-
-  if (rng < attackProb) {
-    const attack = Math.min(250, threat * 3 + epochs)
-    if (attack > colonyDefense) {
-      const excess = attack - colonyDefense
-      const casualties = Math.min(Math.floor(pop / 3), Math.floor(excess / 2))
-      pop = Math.max(0, pop - casualties)
-      colonyDefense = Math.max(0, colonyDefense - Math.floor(attack / 2))
-      events.push(`Enemy raid! Threat ${threat}% — ${casualties} colonists lost, defense degraded.`)
-    } else {
-      events.push(`Enemy raid repelled. Threat level: ${threat}%.`)
-    }
-  }
-
-  return {
-    planet:  { ...planet,  population: pop, actionCount: planet.actionCount + 1, lastActionAt: nowSeconds },
-    colony:  { ...colony,  food, minerals, buildPoints, defense: colonyDefense },
-    events,
-    production: { foodProd, foodUsed, mineralProd, buildProg, defGain, foodRate, mineralRate },
-    threat,
-    attackProb,
-    epochs,
   }
 }
 

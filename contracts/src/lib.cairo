@@ -18,9 +18,17 @@ pub mod systems {
 pub mod models {
     pub mod planet;
     pub mod colony;
+    pub mod resources;
+    pub mod colonists;
     pub mod player_planets;
     pub mod building;
 }
+
+pub use models::colonists::{
+    Colonist, PlanetColonistCount,
+    ColonistsAssigned, ColonistAssignedEntry, ColonistAssignedIdx,
+    ColonistsUnassigned, ColonistUnassignedEntry, ColonistUnassignedIdx,
+};
 
 pub mod utils {
     pub mod renderer {
@@ -37,7 +45,5 @@ pub mod constants {
 }
 
 pub mod libs {
-    pub mod game;
-    pub mod settings;
     pub mod terrain;
 }

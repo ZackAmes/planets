@@ -120,34 +120,31 @@ pub fn terrain_at(seed: felt252, lon: u16, lat: u16) -> u32 {
 }
 
 /// Building suitability bonus for a terrain type (0 = poor, 100 = ideal).
-/// building_type: 0=Farm, 1=Mine, 2=Barracks, 3=Workshop
+/// building_type: 0=TownCenter, 1=WaterWell, 2=IronMine, 3=House, 4=Barracks
 pub fn terrain_bonus(building_type: u8, terrain_type: u32) -> u8 {
-    if building_type == 0 {
-        // Farm
-        if terrain_type == 2 {
-            return 100_u8; // grassland -- ideal
-        }
-        if terrain_type == 3 {
-            return 60_u8; // forest
-        }
-        if terrain_type == 9 {
-            return 40_u8; // scrubland
+    if building_type == 1 {
+        // WaterWell — needs water sources nearby
+        if terrain_type == 1 {
+            return 100_u8; // shallow ocean (coastal)
         }
         if terrain_type == 8 {
-            return 30_u8; // beach
+            return 80_u8; // beach
         }
-        if terrain_type == 5 {
-            return 20_u8; // highland
+        if terrain_type == 9 {
+            return 60_u8; // scrubland (moisture)
         }
-        if terrain_type == 4 {
-            return 10_u8; // desert
+        if terrain_type == 2 {
+            return 40_u8; // grassland
         }
-        return 5_u8; // ocean / mountain / snow
+        if terrain_type == 3 {
+            return 30_u8; // forest
+        }
+        return 10_u8;
     }
-    if building_type == 1 {
-        // Mine
+    if building_type == 2 {
+        // IronMine — best in rocky terrain
         if terrain_type == 6 {
-            return 100_u8; // mountain -- ideal
+            return 100_u8; // mountain
         }
         if terrain_type == 5 {
             return 70_u8; // highland
@@ -160,31 +157,22 @@ pub fn terrain_bonus(building_type: u8, terrain_type: u32) -> u8 {
         }
         return 5_u8;
     }
-    if building_type == 2 {
-        // Barracks
+    if building_type == 4 {
+        // Barracks — defensible high ground
         if terrain_type == 6 {
-            return 60_u8; // mountain stronghold
+            return 60_u8; // mountain
         }
         if terrain_type == 5 {
-            return 50_u8; // highland advantage
+            return 50_u8; // highland
         }
         if terrain_type == 7 {
-            return 40_u8; // snow -- defensible
+            return 40_u8; // snow
         }
         if terrain_type == 3 {
             return 30_u8; // forest cover
         }
         return 20_u8;
     }
-    // Workshop
-    if terrain_type == 3 {
-        return 50_u8; // forest -- lumber
-    }
-    if terrain_type == 2 {
-        return 40_u8; // grassland
-    }
-    if terrain_type == 8 {
-        return 30_u8; // coastal trade
-    }
-    20_u8
+    // TownCenter (0) and House (3) — no terrain output
+    0_u8
 }

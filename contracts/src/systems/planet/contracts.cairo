@@ -17,7 +17,6 @@ pub mod planet_systems {
 
     const PLANET_WIDTH: u32 = 50;
     const PLANET_HEIGHT: u32 = 40;
-    const STARTING_POPULATION: u32 = 100;
 
     #[abi(embed_v0)]
     impl PlanetSystemsImpl of super::IPlanetSystems<ContractState> {
@@ -40,7 +39,7 @@ pub mod planet_systems {
                         name,
                         spawned_at: now,
                         last_action_at: now,
-                        population: STARTING_POPULATION,
+                        population: 0,
                         action_count: 0,
                     }
                 );

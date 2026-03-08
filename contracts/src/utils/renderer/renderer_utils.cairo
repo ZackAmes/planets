@@ -153,13 +153,15 @@ fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
         let x2s = format!("{}", x2);
 
         let (fill, letter): (ByteArray, ByteArray) = if bt == 0 {
-            ("#4aaa44", "F") // Farm — green
+            ("#ffdd44", "T") // TownCenter — gold
         } else if bt == 1 {
-            ("#999999", "M") // Mine — gray
+            ("#44aaff", "W") // WaterWell — blue
         } else if bt == 2 {
-            ("#4466ee", "B") // Barracks — blue
+            ("#aaaaaa", "I") // IronMine — gray
+        } else if bt == 3 {
+            ("#44ff88", "H") // House — green
         } else {
-            ("#ddaa22", "W") // Workshop — gold
+            ("#4466ff", "B") // Barracks — dark-blue
         };
 
         let dot = "<circle r='6' fill='"

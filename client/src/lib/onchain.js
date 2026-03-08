@@ -94,22 +94,40 @@ export async function constructBuilding(account, planetId, lon, lat, buildingTyp
 }
 
 /**
- * Process one turn. farming + mining + building + defense <= 100.
+ * Assign workers to a building at (lon, lat).
+ * workers: total workers to assign (not delta). 0 to remove all.
  */
-export async function assignOrders(account, planetId, { farming, mining, building, defense }) {
+export async function assignWorkers(account, planetId, lon, lat, workers) {
   const { transaction_hash } = await account.execute([
     {
       contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'assign_orders',
+      entrypoint: 'assign_workers',
       calldata: [
         '0x' + BigInt(planetId).toString(16), // u64
-        farming.toString(),                    // u8
-        mining.toString(),                     // u8
-        building.toString(),                   // u8
-        defense.toString(),                    // u8
+        lon.toString(),                        // u16
+        lat.toString(),                        // u16
+        workers.toString(),                    // u8
       ],
     },
   ])
+  await waitForTx(getProvider(), transaction_hash)
+  return transaction_hash
+}
+
+/**
+ * Tick resources and collect (no-op if called too soon).
+ */
+export async function collect(account, planetId) {
+  const { transaction_hash } = await account.execute([
+    {
+      contractAddress: CONFIG.gameSystemsAddress,
+      entrypoint: 'collect',
+      calldata: [
+        '0x' + BigInt(planetId).toString(16), // u64
+      ],
+    },
+  ])
+  await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
 
@@ -127,10 +145,3 @@ export async function waitForTx(provider, txHash) {
   })
 }
 
-/**
- * Convert a transaction hash (felt252 hex string) to a BigInt seed.
- * spawn_planet uses get_tx_info().transaction_hash as the planet seed.
- */
-export function txHashToSeed(txHash) {
-  return BigInt(txHash)
-}
