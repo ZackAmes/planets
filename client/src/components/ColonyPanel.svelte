@@ -1,5 +1,7 @@
 <script>
-  import { BUILDING_INFO, previewConstruct, formatLonLat, previewFight, computeRates, WEAPON_COST, ARMOR_COST, TC_UPGRADE_COST } from '../lib/gameLogic.js'
+  import { BUILDING_INFO, previewConstruct, formatLonLat, previewFight, computeRates,
+           WEAPON_COST, ARMOR_COST, tcUpgradeCost, upgradeBuildingCost,
+           EPOCH_SECONDS, computeThreat, attackProbability, terrainName } from '../lib/gameLogic.js'
 
   let {
     phase,
@@ -20,6 +22,7 @@
     oncollect,
     onassign,
     onupgradetc,
+    onupgradebuilding,
     oncraftgear,
     onfight,
     onbuildmode,
@@ -31,8 +34,12 @@
 
   // TC upgrade
   const tcLevel = $derived(colony?.tcLevel ?? 1)
-  const tcUpgradeCost = $derived(TC_UPGRADE_COST(tcLevel))
-  const canUpgradeTc = $derived(tcLevel < 5 && (resources?.iron ?? 0) >= tcUpgradeCost)
+  const tcCost = $derived(tcUpgradeCost(tcLevel))
+  const canUpgradeTc = $derived(
+    tcLevel < 5 &&
+    (resources?.iron ?? 0) >= tcCost.iron &&
+    (resources?.uranium ?? 0) >= tcCost.uranium
+  )
 
   // Gear crafting draft
   let craftWeapons = $state(1)
@@ -58,6 +65,34 @@
   )
 
   let selectedBuildType = $state(null)
+
+  // Live clock for epoch countdown and threat
+  let nowSeconds = $state(Math.floor(Date.now() / 1000))
+  $effect(() => {
+    const id = setInterval(() => { nowSeconds = Math.floor(Date.now() / 1000) }, 1000)
+    return () => clearInterval(id)
+  })
+
+  const epochProgress = $derived((() => {
+    const ref = planet?.lastActionAt ?? 0
+    if (!ref) return 0
+    return Math.min(1, (nowSeconds - ref) / EPOCH_SECONDS)
+  })())
+
+  const epochCountdown = $derived((() => {
+    const ref = planet?.lastActionAt ?? 0
+    if (!ref) return '--:--'
+    const remaining = Math.max(0, EPOCH_SECONDS - (nowSeconds - ref))
+    if (remaining === 0) return 'READY'
+    const m = Math.floor(remaining / 60)
+    const s = remaining % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+  })())
+
+  const threat = $derived(
+    (planet && resources) ? computeThreat(planet, resources, nowSeconds) : 0
+  )
+  const attackProb = $derived(attackProbability(threat))
 
   // Per-building worker draft: { key -> workers }
   let workerDraft = $state({})
@@ -94,8 +129,10 @@
     (buildings ?? []).filter(b => b.maxWorkers > 0)
   )
 
-  // Buildable types (exclude TownCenter)
-  const buildableTypes = BUILDING_INFO.filter(i => i.type !== 0)
+  // Buildable types (exclude TownCenter), filtered by TC level
+  const buildableTypes = $derived(
+    BUILDING_INFO.filter(i => i.type !== 0 && i.minTcLevel <= tcLevel)
+  )
 </script>
 
 <div class="panel">
@@ -132,6 +169,11 @@
         <span class="rate positive">+{rates.defenseRate}/ep</span>
       </div>
       <div class="stat">
+        <span class="label">Uranium</span>
+        <span class="value purple">{resources?.uranium ?? 0}</span>
+        <span class="rate" class:positive={rates.uraniumRate > 0}>+{rates.uraniumRate}/ep</span>
+      </div>
+      <div class="stat">
         <span class="label">Pop / Cap</span>
         <span class="value">{planet?.population ?? 0} / {tcLevel * 10}</span>
         <span class="rate dim">TC lv{tcLevel}</span>
@@ -141,7 +183,11 @@
     <!-- TC upgrade -->
     <button class="tc-btn" onclick={onupgradetc}
       disabled={!canUpgradeTc || disabled || tcLevel >= 5}>
-      {tcLevel >= 5 ? 'TC Max Level' : `Upgrade TC lv${tcLevel}→${tcLevel + 1} (${tcUpgradeCost} iron)`}
+      {#if tcLevel >= 5}
+        TC Max Level
+      {:else}
+        Upgrade TC lv{tcLevel}→{tcLevel + 1} ({tcCost.iron} iron{tcCost.uranium > 0 ? ` + ${tcCost.uranium} U` : ''})
+      {/if}
     </button>
 
     <!-- Colonists -->
@@ -156,9 +202,29 @@
       </span>
     </div>
 
+    <div class="epoch-wrap">
+      <div class="epoch-track">
+        <div class="epoch-fill" style="width:{epochProgress * 100}%" class:ready={epochProgress >= 1}></div>
+      </div>
+      <span class="epoch-label" class:ready={epochProgress >= 1}>{epochCountdown}</span>
+    </div>
+
     <button class="collect-btn" onclick={oncollect} {disabled}>
       {disabled ? 'Working…' : 'Collect Resources'}
     </button>
+
+    <!-- Threat gauge -->
+    {#if threat > 0}
+      <div class="threat-row">
+        <span class="threat-label">Threat</span>
+        <div class="threat-track">
+          <div class="threat-fill"
+            style="width:{threat}%; background:{threat < 33 ? '#3a9a6a' : threat < 66 ? '#c8901a' : '#e04444'}">
+          </div>
+        </div>
+        <span class="threat-pct" style="color:{threat < 33 ? '#5ab' : threat < 66 ? '#ca8' : '#e66'}">{threat}% · {attackProb}% atk</span>
+      </div>
+    {/if}
 
     <!-- Invader alert -->
     {#if invader?.active}
@@ -203,9 +269,27 @@
       <h3>Workers</h3>
       {#each workerBuildings as b}
         {@const info = BUILDING_INFO[b.buildingType]}
+        {@const bLevel = b.level ?? 1}
+        {@const upCost = upgradeBuildingCost(bLevel)}
+        {@const canUpgrade = bLevel < tcLevel && (resources?.iron ?? 0) >= upCost.iron && (resources?.uranium ?? 0) >= upCost.uranium}
+        {@const totalOutput = (b.workers ?? 0) * (b.outputPerWorkerEpoch ?? 0)}
         <div class="worker-row">
-          <span class="bname" style="color:{info?.color}">{info?.name ?? '?'}</span>
-          <span class="coords dim">{formatLonLat(b.lon, b.lat)}</span>
+          <div class="brow-header">
+            <span class="bname" style="color:{info?.color}">{info?.name ?? '?'}</span>
+            <span class="blevel dim">lv{bLevel}</span>
+            {#if bLevel < 5}
+              <button class="upgrade-btn" onclick={() => onupgradebuilding?.(b.lon, b.lat)}
+                disabled={!canUpgrade || disabled} title="Upgrade ({upCost.iron} iron{upCost.uranium > 0 ? ` + ${upCost.uranium} U` : ''})">
+                +lv
+              </button>
+            {/if}
+          </div>
+          <div class="brow-meta">
+            <span class="coords dim">{formatLonLat(b.lon, b.lat)}</span>
+            {#if totalOutput > 0}
+              <span class="output-tag">+{totalOutput} {info?.resource}/ep</span>
+            {/if}
+          </div>
           <div class="worker-ctrl">
             <button class="adj" onclick={() => setDraft(b, draftWorkers(b) - 1)} disabled={disabled || draftWorkers(b) <= 0}>-</button>
             <span class="wcount">{draftWorkers(b)}/{b.maxWorkers}</span>
@@ -269,7 +353,13 @@
           <p class="dim">{formatLonLat(pendingBuildSite.lon, pendingBuildSite.lat)}</p>
           {#if preview.canBuild}
             {@const binfo = BUILDING_INFO[selectedBuildType]}
-            <p class="cost-ok">Cost: {preview.ironCost} iron{(binfo?.waterCost ?? 0) > 0 ? ` + ${binfo.waterCost} water` : ''}{preview.output > 0 ? ` · +${preview.output}/worker/ep` : ' · spawns 1 colonist'}</p>
+            <div class="terrain-badge">
+              <span class="terrain-name">{preview.terrainName}</span>
+              {#if preview.bonus > 0}
+                <span class="terrain-bonus">+{preview.bonus}% bonus</span>
+              {/if}
+            </div>
+            <p class="cost-ok">Cost: {preview.ironCost} iron{(binfo?.waterCost ?? 0) > 0 ? ` + ${binfo.waterCost} water` : ''}{(binfo?.uraniumCost ?? 0) > 0 ? ` + ${binfo.uraniumCost} uranium` : ''}{preview.output > 0 ? ` · +${preview.output}/w/ep` : binfo?.type === 3 ? ' · spawns 1 colonist' : ' · win condition'}</p>
             <button class="primary" onclick={confirmBuild} {disabled}>
               {disabled ? 'Building…' : 'Confirm Build'}
             </button>
@@ -290,6 +380,12 @@
         {/each}
       </div>
     {/if}
+
+  {:else if phase === 'won'}
+    <h2 class="won-title">LAUNCHED!</h2>
+    <p class="hint">Your colony has reached the stars.</p>
+    <p class="dim">Survived {planet?.actionCount ?? 0} turns.</p>
+    <p class="dim" style="color:#bb44ff">Population: {planet?.population ?? 0}</p>
 
   {:else if phase === 'gameover'}
     <h2>Colony Lost</h2>
@@ -342,6 +438,7 @@
   .value.blue { color: #44aaff; }
   .value.gray { color: #aaaaaa; }
   .value.green { color: #44ff88; }
+  .value.purple { color: #bb44ff; }
   .rate { font-size: 0.6rem; color: #556; }
   .rate.positive { color: #5a9; }
   .rate.negative { color: #e55; }
@@ -406,7 +503,25 @@
     gap: 0.2rem;
   }
 
+  .brow-header { display: flex; align-items: center; gap: 0.3rem; }
+  .blevel { font-size: 0.62rem; }
   .bname { font-size: 0.72rem; font-weight: bold; }
+
+  .upgrade-btn {
+    background: #1a2a1a;
+    border: 1px solid #3a6a3a;
+    border-radius: 3px;
+    color: #6aff6a;
+    font-family: monospace;
+    font-size: 0.6rem;
+    padding: 0.05rem 0.3rem;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .upgrade-btn:hover:not(:disabled) { background: #253525; }
+  .upgrade-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .won-title { font-size: 1.1rem; color: #bb44ff; text-transform: uppercase; letter-spacing: 0.15em; margin: 0; }
 
   .worker-ctrl {
     display: flex;
@@ -557,6 +672,77 @@
 
   .fight-btn:hover:not(:disabled) { background: #4a2020; }
   .fight-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Epoch countdown bar */
+  .epoch-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .epoch-track {
+    flex: 1;
+    height: 10px;
+    background: #0a0a18;
+    border: 1px solid #1a2030;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .epoch-fill {
+    height: 100%;
+    background: #1a5a3a;
+    transition: width 1s linear;
+  }
+  .epoch-fill.ready { background: #2a8a5a; }
+  .epoch-label {
+    font-size: 0.62rem;
+    color: #557;
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .epoch-label.ready { color: #6aff9a; }
+
+  /* Threat gauge */
+  .threat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .threat-label { font-size: 0.6rem; color: #556; min-width: 36px; }
+  .threat-track {
+    flex: 1;
+    height: 6px;
+    background: #0a0a18;
+    border: 1px solid #1a2030;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .threat-fill {
+    height: 100%;
+    transition: width 0.5s ease, background 0.5s ease;
+  }
+  .threat-pct { font-size: 0.58rem; min-width: 72px; text-align: right; }
+
+  /* Building output tag */
+  .brow-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .output-tag { font-size: 0.6rem; color: #5a8a6a; }
+
+  /* Terrain badge in build confirm */
+  .terrain-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #0a0a18;
+    border: 1px solid #1a2030;
+    border-radius: 3px;
+    padding: 0.2rem 0.4rem;
+  }
+  .terrain-name { font-size: 0.68rem; color: #8aaccc; }
+  .terrain-bonus { font-size: 0.6rem; color: #6a9a6a; margin-left: auto; }
 
   /* Gear */
   .gear-stock { color: #aac; font-size: 0.68rem; font-weight: normal; }

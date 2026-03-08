@@ -7,7 +7,7 @@
 #[dojo::model]
 pub struct Colonist {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub colonist_id: u32,
     pub is_assigned: bool,
@@ -21,7 +21,7 @@ pub struct Colonist {
 #[dojo::model]
 pub struct PlanetColonistCount {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub count: u32,
 }
 
@@ -34,7 +34,7 @@ pub struct PlanetColonistCount {
 #[dojo::model]
 pub struct ColonistsAssigned {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub count: u32,
 }
 
@@ -42,7 +42,7 @@ pub struct ColonistsAssigned {
 #[dojo::model]
 pub struct ColonistAssignedEntry {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub index: u32,
     pub colonist_id: u32,
@@ -53,7 +53,7 @@ pub struct ColonistAssignedEntry {
 #[dojo::model]
 pub struct ColonistAssignedIdx {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub colonist_id: u32,
     pub index: u32,
@@ -67,7 +67,7 @@ pub struct ColonistAssignedIdx {
 #[dojo::model]
 pub struct ColonistsUnassigned {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub count: u32,
 }
 
@@ -75,7 +75,7 @@ pub struct ColonistsUnassigned {
 #[dojo::model]
 pub struct ColonistUnassignedEntry {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub index: u32,
     pub colonist_id: u32,
@@ -86,7 +86,7 @@ pub struct ColonistUnassignedEntry {
 #[dojo::model]
 pub struct ColonistUnassignedIdx {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub colonist_id: u32,
     pub index: u32,

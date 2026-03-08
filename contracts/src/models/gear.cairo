@@ -8,7 +8,7 @@
 #[dojo::model]
 pub struct Gear {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub weapons: u32,
     pub armor: u32,
 }

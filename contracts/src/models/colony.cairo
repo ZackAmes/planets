@@ -8,7 +8,7 @@
 #[dojo::model]
 pub struct Colony {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub col: u32,
     pub row: u32,
     pub founded: bool,

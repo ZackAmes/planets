@@ -12,7 +12,7 @@ use graffiti::json::JsonImpl;
 // ---------------------------------------------------------------------------
 
 pub fn create_metadata(
-    planet_id: u64, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+    planet_id: felt252, planet: Planet, planet_name: felt252, buildings: Span<Building>,
 ) -> ByteArray {
     let pop = planet.population;
     let seed_val = planet.seed;
@@ -49,7 +49,7 @@ pub fn create_metadata(
 }
 
 pub fn generate_svg(
-    planet_id: u64, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+    planet_id: felt252, planet: Planet, planet_name: felt252, buildings: Span<Building>,
 ) -> ByteArray {
     let svg = _build_rotating_planet_svg(planet, planet_name, planet_id, buildings);
     format!("data:image/svg+xml;base64,{}", bytes_base64_encode(svg))
@@ -71,28 +71,32 @@ pub fn generate_details(planet: Planet) -> Span<GameDetail> {
 fn _build_rotating_planet_svg(
     planet: Planet,
     planet_name: felt252,
-    planet_id: u64,
+    planet_id: felt252,
     buildings: Span<Building>,
 ) -> ByteArray {
     let _name = _felt_to_ba(planet_name);
     let _id = format!("{}", planet_id);
+    let _pop = format!("{}", planet.population);
+    let _turns = format!("{}", planet.action_count);
 
     let strips = _build_terrain_grid(planet.seed);
     let building_markers = _build_building_markers(buildings);
+    let stars = _build_starfield();
 
     "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>"
         + "<defs>"
         + "<clipPath id='pc'><circle cx='300' cy='300' r='255'/></clipPath>"
         + "<radialGradient id='lit' cx='35%' cy='28%' r='65%'>"
-        + "<stop offset='0%' stop-color='#fff' stop-opacity='0.28'/>"
+        + "<stop offset='0%' stop-color='#fff' stop-opacity='0.38'/>"
         + "<stop offset='100%' stop-color='#000' stop-opacity='0'/>"
         + "</radialGradient>"
         + "<radialGradient id='shad' cx='78%' cy='78%' r='55%'>"
         + "<stop offset='30%' stop-color='#000' stop-opacity='0'/>"
-        + "<stop offset='100%' stop-color='#000' stop-opacity='0.72'/>"
+        + "<stop offset='100%' stop-color='#000' stop-opacity='0.82'/>"
         + "</radialGradient>"
         + "</defs>"
         + "<rect width='600' height='600' fill='#050510'/>"
+        + stars
         + "<g clip-path='url(#pc)'>"
         // Scrolling terrain + building markers share the same animating group
         + "<g>"
@@ -101,24 +105,63 @@ fn _build_rotating_planet_svg(
         + strips
         + building_markers
         + "</g>"
-        // Polar ice-cap overlays (rows 0+1 and 8+9 of the grid are snowy,
-        // but the ellipses add a smooth spherical look over the flat grid).
-        + "<ellipse cx='300' cy='60' rx='255' ry='70' fill='#dde8ec' opacity='0.72'/>"
-        + "<ellipse cx='300' cy='540' rx='255' ry='70' fill='#dde8ec' opacity='0.72'/>"
+        // Polar ice-cap overlays
+        + "<ellipse cx='300' cy='55' rx='255' ry='65' fill='#e4eff4' opacity='0.78'/>"
+        + "<ellipse cx='300' cy='545' rx='255' ry='65' fill='#e4eff4' opacity='0.78'/>"
         + "</g>"
+        // Atmosphere glow rings (outside clip path)
+        + "<circle cx='300' cy='300' r='258' fill='none' stroke='#6ab4ff' stroke-width='3' opacity='0.22'/>"
+        + "<circle cx='300' cy='300' r='264' fill='none' stroke='#3a7ab8' stroke-width='2' opacity='0.12'/>"
+        + "<circle cx='300' cy='300' r='272' fill='none' stroke='#2a5a90' stroke-width='1.5' opacity='0.06'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#lit)'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#shad)'/>"
-        + "<circle cx='300' cy='300' r='255' fill='none' "
-        + "stroke='#4a8fd4' stroke-width='4' opacity='0.35'/>"
         + "<text x='300' y='578' text-anchor='middle' fill='#6ab4ff' "
-        + "font-size='18' font-family='monospace'>"
+        + "font-size='18' font-family='monospace' letter-spacing='2'>"
         + _name
         + "</text>"
-        + "<text x='300' y='22' text-anchor='middle' fill='#445566' "
-        + "font-size='13' font-family='monospace'>PLANET #"
+        + "<text x='300' y='594' text-anchor='middle' fill='#33506a' "
+        + "font-size='11' font-family='monospace'>pop "
+        + _pop
+        + "  |  turn "
+        + _turns
+        + "</text>"
+        + "<text x='300' y='22' text-anchor='middle' fill='#3a5570' "
+        + "font-size='12' font-family='monospace' letter-spacing='1'>PLANET #"
         + _id
         + "</text>"
         + "</svg>"
+}
+
+// ---------------------------------------------------------------------------
+// Star field — hardcoded positions scattered outside the planet circle
+// (cx=300, cy=300, r=255). Stars inside the circle are hidden by terrain.
+// ---------------------------------------------------------------------------
+
+fn _build_starfield() -> ByteArray {
+    "<circle cx='42' cy='87' r='1.2' fill='#ffffff' opacity='0.65'/>"
+        + "<circle cx='118' cy='28' r='0.8' fill='#ffffff' opacity='0.5'/>"
+        + "<circle cx='175' cy='14' r='1.5' fill='#ffffff' opacity='0.7'/>"
+        + "<circle cx='260' cy='5' r='0.9' fill='#ffffff' opacity='0.45'/>"
+        + "<circle cx='395' cy='9' r='1.1' fill='#ffffff' opacity='0.6'/>"
+        + "<circle cx='468' cy='22' r='0.8' fill='#ffffff' opacity='0.55'/>"
+        + "<circle cx='540' cy='12' r='1.4' fill='#ffffff' opacity='0.68'/>"
+        + "<circle cx='587' cy='68' r='1.0' fill='#ffffff' opacity='0.5'/>"
+        + "<circle cx='594' cy='185' r='0.9' fill='#ffffff' opacity='0.6'/>"
+        + "<circle cx='591' cy='328' r='1.2' fill='#ffffff' opacity='0.45'/>"
+        + "<circle cx='588' cy='445' r='0.8' fill='#ffffff' opacity='0.55'/>"
+        + "<circle cx='572' cy='538' r='1.3' fill='#ffffff' opacity='0.65'/>"
+        + "<circle cx='490' cy='578' r='0.9' fill='#ffffff' opacity='0.5'/>"
+        + "<circle cx='365' cy='590' r='1.0' fill='#ffffff' opacity='0.6'/>"
+        + "<circle cx='220' cy='585' r='0.8' fill='#ffffff' opacity='0.45'/>"
+        + "<circle cx='98' cy='568' r='1.1' fill='#ffffff' opacity='0.55'/>"
+        + "<circle cx='22' cy='512' r='0.9' fill='#ffffff' opacity='0.65'/>"
+        + "<circle cx='8' cy='385' r='1.3' fill='#ffffff' opacity='0.5'/>"
+        + "<circle cx='12' cy='245' r='0.8' fill='#ffffff' opacity='0.6'/>"
+        + "<circle cx='28' cy='145' r='1.0' fill='#ffffff' opacity='0.55'/>"
+        + "<circle cx='78' cy='200' r='0.7' fill='#c8d8ff' opacity='0.4'/>"
+        + "<circle cx='510' cy='155' r='0.7' fill='#c8d8ff' opacity='0.4'/>"
+        + "<circle cx='85' cy='430' r='0.7' fill='#c8d8ff' opacity='0.35'/>"
+        + "<circle cx='508' cy='470' r='0.9' fill='#c8d8ff' opacity='0.4'/>"
 }
 
 // ---------------------------------------------------------------------------
@@ -160,13 +203,18 @@ fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
             ("#aaaaaa", "I") // IronMine — gray
         } else if bt == 3 {
             ("#44ff88", "H") // House — green
-        } else {
+        } else if bt == 4 {
             ("#4466ff", "B") // Barracks — dark-blue
+        } else if bt == 5 {
+            ("#bb44ff", "U") // UraniumMine — purple
+        } else {
+            ("#ffffff", "S") // Spaceport — white
         };
 
-        let dot = "<circle r='6' fill='"
+        let dot = "<circle r='9' fill='#000' opacity='0.35'/>"
+            + "<circle r='7' fill='"
             + fill.clone()
-            + "' stroke='#111' stroke-width='1' opacity='0.92'/>"
+            + "' stroke='#fff' stroke-width='0.8' opacity='0.95'/>"
             + "<text dy='0.38em' text-anchor='middle' fill='#fff' "
             + "font-size='6' font-weight='bold' font-family='monospace'>"
             + letter.clone()
@@ -246,16 +294,16 @@ fn _build_terrain_grid(seed: felt252) -> ByteArray {
 
 fn _terrain_color(idx: u32) -> ByteArray {
     match idx {
-        0 => "#1a5f7a", // deep ocean
-        1 => "#2a85a0", // shallow ocean
-        2 => "#4a7c39", // grassland
-        3 => "#1e4d1a", // forest
-        4 => "#c8972a", // desert
-        5 => "#7a6a5a", // highland
-        6 => "#5a4a3a", // mountain
-        7 => "#dde8ec", // snow
-        8 => "#c8b87a", // beach
-        _ => "#8a7a50", // scrubland (idx 9)
+        0 => "#0d3d5c", // deep ocean
+        1 => "#1a6b8a", // shallow ocean
+        2 => "#3d7a2a", // grassland
+        3 => "#163d12", // forest
+        4 => "#c47d15", // desert
+        5 => "#6b5a48", // highland
+        6 => "#4a3a2c", // mountain
+        7 => "#e8f2f5", // snow
+        8 => "#c4a85c", // beach
+        _ => "#7a6840", // scrubland (idx 9)
     }
 }
 

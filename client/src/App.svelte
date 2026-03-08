@@ -4,8 +4,8 @@
   import PlanetView from './components/PlanetView.svelte'
   import ColonyPanel from './components/ColonyPanel.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, craftGear, fightInvader, waitForTx } from './lib/onchain.js'
-  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchBuildings, fetchResources, fetchColonistsAssigned, fetchColonistsUnassigned, fetchInvader, fetchGear } from './lib/contracts.js'
+  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, upgradeBuilding, craftGear, fightInvader, waitForTx } from './lib/onchain.js'
+  import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchFullState } from './lib/contracts.js'
   import { getProvider } from './lib/contracts.js'
 
   // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@
   })
 
   // ---------------------------------------------------------------------------
-  // Game state — phases: 'connect' | 'mint' | 'spawn' | 'founding' | 'managing' | 'gameover'
+  // Game state — phases: 'connect' | 'mint' | 'spawn' | 'spawned' | 'founding' | 'managing' | 'won' | 'gameover'
   // ---------------------------------------------------------------------------
   let phase = $state('connect')
   let planetId = $state(null)
@@ -70,48 +70,58 @@
   }
 
   async function restoreState(playerAddress) {
-    let ids = await fetchDenshokanPlanets(playerAddress)
-    if (ids.length === 0) {
-      const cached = localStorage.getItem(`planets:${playerAddress}`)
-      if (cached) ids = [BigInt(cached)]
-    }
+    const ids = await fetchDenshokanPlanets(playerAddress)
     if (ids.length === 0) { phase = 'mint'; return }
 
     const id = ids[ids.length - 1]
-    const p = await fetchPlanet(id)
-    if (!p) { planetId = id; phase = 'spawn'; return }
-
     planetId = id
-    planetName = p.name
-    planet = { seed: p.seedJs, seedFull: p.seed, population: p.population, actionCount: p.actionCount, width: p.width, height: p.height, spawnedAt: p.spawnedAt, lastActionAt: p.lastActionAt }
 
-    if (p.population === 0 && p.actionCount > 0) { phase = 'gameover'; return }
+    const s = await fetchFullState(id)
+    if (!s) { phase = 'spawn'; return }
 
-    const c = await fetchColony(id)
-    if (!c) { phase = 'founding'; return }
+    planetName = s.planet.name
+    setPlanetState(s.planet)
 
-    colony = c
+    if (s.planet.population === 0 && s.planet.actionCount > 0) { phase = 'gameover'; return }
+
+    if (!s.colony) { phase = 'founding'; return }
+
+    colony     = s.colony
+    resources  = s.resources
+    assigned   = s.assigned
+    unassigned = s.unassigned
+    buildings  = s.buildings
+    invader    = s.invader
+    gear       = s.gear
     confirmedMarker = null
-    await refreshColonyState(id)
-    phase = 'managing'
+    phase = buildings.some(b => b.buildingType === 6) ? 'won' : 'managing'
   }
 
   async function refreshColonyState(id) {
     const pid = id ?? planetId
-    const [b, r, ca, cu, inv, g] = await Promise.all([
-      fetchBuildings(pid),
-      fetchResources(pid),
-      fetchColonistsAssigned(pid),
-      fetchColonistsUnassigned(pid),
-      fetchInvader(pid),
-      fetchGear(pid),
-    ])
-    buildings = b
-    resources = r
-    assigned = ca
-    unassigned = cu
-    invader = inv
-    gear = g
+    const s = await fetchFullState(pid)
+    if (!s) return
+    setPlanetState(s.planet)
+    if (s.colony) colony = s.colony
+    resources  = s.resources
+    assigned   = s.assigned
+    unassigned = s.unassigned
+    buildings  = s.buildings
+    invader    = s.invader
+    gear       = s.gear
+  }
+
+  async function handleManualRefresh() {
+    if (!planetId) return
+    txPending = true
+    txStatus = 'Refreshing...'
+    try {
+      await refreshColonyState(planetId)
+      txStatus = ''
+    } catch (e) {
+      console.error('[handleManualRefresh] error:', e)
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
   }
 
   async function handleDisconnect() {
@@ -132,7 +142,6 @@
       const { transaction_hash, tokenId } = await mintGame(account, planetName.trim())
       console.log('[mint]', transaction_hash, tokenId?.toString())
       planetId = tokenId
-      localStorage.setItem(`planets:${address}`, tokenId.toString())
       txStatus = 'Token minted!'
       phase = 'spawn'
     } catch (e) {
@@ -149,16 +158,62 @@
     txStatus = 'Spawning planet...'
     try {
       await spawnPlanet(account, planetId, planetName.trim())
-      localStorage.setItem(`planets:${address}`, planetId.toString())
-      txStatus = 'Reading planet seed...'
-      const p = await fetchPlanet(planetId)
-      if (!p) throw new Error('Planet not found after spawn')
-      planet = { seed: p.seedJs, seedFull: p.seed, population: p.population, actionCount: p.actionCount, width: p.width, height: p.height, spawnedAt: p.spawnedAt, lastActionAt: p.lastActionAt }
-      txStatus = 'Planet spawned!'
-      phase = 'founding'
+      await loadPlanetAfterSpawn()
     } catch (e) {
+      console.error('[handleSpawn] error:', e)
       txStatus = 'Error: ' + (e.message ?? String(e))
     } finally { txPending = false }
+  }
+
+  // Polls for planet state after spawn tx — node may lag behind accepted tx.
+  // If it can't find the planet after several retries, moves to 'spawned' phase
+  // so the player can manually retry without re-sending the tx.
+  async function loadPlanetAfterSpawn() {
+    txStatus = 'Reading planet seed...'
+    const delays = [1000, 2000, 3000, 5000]
+    for (const delay of delays) {
+      await new Promise(r => setTimeout(r, delay))
+      const p = await fetchPlanet(planetId)
+      if (p) {
+        setPlanetState(p)
+        txStatus = ''
+        phase = 'founding'
+        return
+      }
+    }
+    // Tx went through but node not returning state yet — let player manually retry
+    txStatus = ''
+    phase = 'spawned'
+  }
+
+  async function handleRefreshAfterSpawn() {
+    txPending = true
+    txStatus = 'Checking planet state...'
+    try {
+      const p = await fetchPlanet(planetId)
+      if (p) {
+        setPlanetState(p)
+        phase = 'founding'
+      } else {
+        txStatus = 'Planet not found yet — try again in a moment'
+      }
+    } catch (e) {
+      console.error('[handleRefreshAfterSpawn] error:', e)
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
+  function setPlanetState(p) {
+    planet = {
+      seed: p.seedJs,
+      seedFull: p.seed,   // BigInt felt252
+      population: p.population,
+      actionCount: p.actionCount,
+      width: p.width,
+      height: p.height,
+      spawnedAt: p.spawnedAt,
+      lastActionAt: p.lastActionAt,
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -176,14 +231,11 @@
     try {
       const tx = await foundColony(account, planetId, pendingLocation.col, pendingLocation.row)
       await waitForTx(getProvider(), tx)
-      const [c, p] = await Promise.all([fetchColony(planetId), fetchPlanet(planetId)])
-      colony = c
-      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
       confirmedMarker = pendingMarker
       pendingLocation = null
       pendingMarker = null
       await refreshColonyState(planetId)
-      phase = 'managing'
+      phase = buildings.some(b => b.buildingType === 6) ? 'won' : 'managing'
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
@@ -212,6 +264,23 @@
       await waitForTx(getProvider(), tx)
       await refreshColonyState(planetId)
       buildMode = false; selectedBuildType = null; pendingBuildSite = null
+      if (type === 6) phase = 'won'
+      txStatus = ''
+    } catch (e) {
+      txStatus = 'Error: ' + (e.message ?? String(e))
+    } finally { txPending = false }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upgrade building
+  // ---------------------------------------------------------------------------
+  async function handleUpgradeBuilding(lon, lat) {
+    if (!account) return
+    txPending = true
+    txStatus = 'Upgrading building...'
+    try {
+      await upgradeBuilding(account, planetId, lon, lat)
+      await refreshColonyState(planetId)
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
@@ -243,9 +312,6 @@
     txStatus = 'Upgrading Town Center...'
     try {
       await upgradeTc(account, planetId)
-      const [c, p] = await Promise.all([fetchColony(planetId), fetchPlanet(planetId)])
-      colony = c
-      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
       await refreshColonyState(planetId)
       txStatus = ''
     } catch (e) {
@@ -278,11 +344,8 @@
     txStatus = 'Sending fighters...'
     try {
       await fightInvader(account, planetId, colonists, weapons, armor)
-      const [r, p] = await Promise.all([fetchResources(planetId), fetchPlanet(planetId)])
-      resources = r
-      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
       await refreshColonyState(planetId)
-      if (p?.population === 0) phase = 'gameover'
+      if (planet?.population === 0) phase = 'gameover'
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
@@ -298,16 +361,27 @@
     txStatus = 'Collecting resources...'
     try {
       await collect(account, planetId)
-      const [r, p] = await Promise.all([fetchResources(planetId), fetchPlanet(planetId)])
-      resources = r
-      if (p) planet = { ...planet, population: p.population, actionCount: p.actionCount }
-      if (p?.population === 0) phase = 'gameover'
       await refreshColonyState(planetId)
+      if (planet?.population === 0) phase = 'gameover'
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
     } finally { txPending = false }
   }
+
+  // ---------------------------------------------------------------------------
+  // Periodic state polling — refresh every 30s when managing
+  // ---------------------------------------------------------------------------
+  $effect(() => {
+    if (phase !== 'managing' || !planetId) return
+    const id = setInterval(async () => {
+      if (txPending) return
+      const p = await fetchPlanet(planetId)
+      if (p) setPlanetState(p)
+      await refreshColonyState(planetId)
+    }, 30_000)
+    return () => clearInterval(id)
+  })
 
   const DEV_SEED = 987654321
   const displaySeed = $derived(planet?.seed ?? DEV_SEED)
@@ -334,6 +408,9 @@
       <span class="planet-label">PLANETS</span>
       {#if address}
         <span class="addr">{address.slice(0, 6)}…{address.slice(-4)}</span>
+        {#if planet && (phase === 'managing' || phase === 'founding')}
+          <button class="btn-sm" onclick={handleManualRefresh} disabled={txPending} title="Refresh state">⟳</button>
+        {/if}
         <button class="btn-sm" onclick={handleDisconnect}>Disconnect</button>
       {/if}
     </div>
@@ -371,6 +448,15 @@
         </button>
       </div>
 
+    {:else if phase === 'spawned'}
+      <div class="card">
+        <h2>Planet Spawned</h2>
+        <p class="dim">Tx confirmed. Waiting for node to reflect state.</p>
+        <button class="btn-primary" onclick={handleRefreshAfterSpawn} disabled={txPending}>
+          {txPending ? 'Checking…' : 'Check Planet State'}
+        </button>
+      </div>
+
     {:else if planet}
       <div class="pop-bar">
         <span class="pop-label">Pop</span>
@@ -398,6 +484,7 @@
         oncollect={handleCollect}
         onassign={handleAssignWorkers}
         onupgradetc={handleUpgradeTc}
+        onupgradebuilding={handleUpgradeBuilding}
         oncraftgear={handleCraftGear}
         onfight={handleFightInvader}
         onbuildmode={handleBuildMode}

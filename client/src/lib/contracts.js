@@ -34,19 +34,35 @@ function getAbi(tag) {
 // ---------------------------------------------------------------------------
 
 export function gameTokenContract(providerOrAccount) {
-  return new Contract(
-    getAbi('planets-game_token_systems'),
-    CONFIG.gameTokenSystemsAddress,
-    providerOrAccount ?? getProvider(),
-  )
+  return new Contract({
+    abi: getAbi('planets-game_token_systems'),
+    address: CONFIG.gameTokenSystemsAddress,
+    providerOrAccount: providerOrAccount ?? getProvider(),
+  })
 }
 
 export function rendererContract(providerOrAccount) {
-  return new Contract(
-    getAbi('planets-renderer_systems'),
-    CONFIG.rendererSystemsAddress,
-    providerOrAccount ?? getProvider(),
-  )
+  return new Contract({
+    abi: getAbi('planets-renderer_systems'),
+    address: CONFIG.rendererSystemsAddress,
+    providerOrAccount: providerOrAccount ?? getProvider(),
+  })
+}
+
+export function planetContract(providerOrAccount) {
+  return new Contract({
+    abi: getAbi('planets-planet_systems'),
+    address: CONFIG.planetSystemsAddress,
+    providerOrAccount: providerOrAccount ?? getProvider(),
+  })
+}
+
+export function gameContract(providerOrAccount) {
+  return new Contract({
+    abi: getAbi('planets-game_systems'),
+    address: CONFIG.gameSystemsAddress,
+    providerOrAccount: providerOrAccount ?? getProvider(),
+  })
 }
 
 const DENSHOKAN_ADDRESS = denshokan[0].address
@@ -76,11 +92,34 @@ export async function fetchDenshokanPlanets(playerAddress) {
     const res = await provider.callContract({
       contractAddress: DENSHOKAN_ADDRESS,
       entrypoint: 'token_of_owner_by_index',
-      calldata: [playerAddress, i.toString(), '0x0'], // index as u256 low,high
+      calldata: [playerAddress, i.toString(), '0x0'],
     })
-    ids.push(BigInt(res[0]))
+    // u256 returned as [low, high]
+    const id = BigInt(res[0]) + (BigInt(res[1] ?? 0) << 128n)
+    ids.push(id)
   }
-  return ids
+
+  // Filter to tokens that belong to this game's token contract
+  const gameAddr = BigInt(CONFIG.gameTokenSystemsAddress)
+  console.log('[fetchDenshokanPlanets] expected game address:', CONFIG.gameTokenSystemsAddress)
+  const filtered = []
+  for (const id of ids) {
+    try {
+      const res = await provider.callContract({
+        contractAddress: DENSHOKAN_ADDRESS,
+        entrypoint: 'token_game_address',
+        calldata: [id.toString()],
+      })
+      const tokenGameAddr = BigInt(res[0])
+      const match = tokenGameAddr === gameAddr
+      console.log(`[fetchDenshokanPlanets] token ${id}: game_address=0x${tokenGameAddr.toString(16)} ${match ? '✓ kept' : '✗ filtered (wrong game)'}`)
+      if (match) filtered.push(id)
+    } catch (e) {
+      console.warn(`[fetchDenshokanPlanets] token ${id}: token_game_address failed, skipping —`, e.message)
+    }
+  }
+  console.log('[fetchDenshokanPlanets] result:', filtered.map(String))
+  return filtered
 }
 
 // ---------------------------------------------------------------------------
@@ -144,155 +183,153 @@ export async function fetchPlanetDetails(planetId) {
 // Returns a plain JS object or null if the planet hasn't been spawned.
 // ---------------------------------------------------------------------------
 
-export async function fetchPlanet(planetId) {
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+function parsePlanet(p, planetId) {
+  if (!p || BigInt(p.seed) === 0n) return null
+  const seedBig = BigInt(p.seed)
+  return {
+    planetId: Number(planetId),
+    seed: seedBig,
+    seedJs: Number(seedBig % BigInt(2 ** 53)),
+    width: Number(p.width),
+    height: Number(p.height),
+    name: p.name !== 0n ? shortString.decodeShortString('0x' + BigInt(p.name).toString(16)) : '',
+    population: Number(p.population),
+    actionCount: Number(p.action_count),
+    spawnedAt: Number(BigInt(p.spawned_at)),
+    lastActionAt: Number(BigInt(p.last_action_at)),
+  }
+}
+
+function parseColony(c) {
+  if (!c || !c.founded) return null
+  return { col: Number(c.col), row: Number(c.row), founded: true, tcLevel: Number(c.tc_level) }
+}
+
+function parseResources(r) {
+  return {
+    water: Number(r.water), iron: Number(r.iron),
+    defense: Number(r.defense), uranium: Number(r.uranium),
+    lastUpdatedAt: Number(BigInt(r.last_updated_at)),
+  }
+}
+
+function parseBuildings(arr) {
+  return Array.from(arr).map((b) => ({
+    lon: Number(b.lon), lat: Number(b.lat),
+    buildingType: Number(b.building_type),
+    level: Number(b.level),
+    terrainBonus: Number(b.terrain_bonus),
+    workers: Number(b.workers),
+    maxWorkers: Number(b.max_workers),
+    outputPerWorkerEpoch: Number(b.output_per_worker_epoch),
+  }))
+}
+
+function parseInvader(inv) {
+  return {
+    active: Boolean(inv.active), strength: Number(inv.strength),
+    lon: Number(inv.lon), lat: Number(inv.lat),
+    spawnedAt: Number(BigInt(inv.spawned_at)),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// fetchFullState — single call for everything, used after every action
+// ---------------------------------------------------------------------------
+
+export async function fetchFullState(planetId) {
   try {
-    const contract = rendererContract()
-    const p = await contract.get_planet(BigInt(planetId))
-    if (!p || BigInt(p.population) === 0n && BigInt(p.seed) === 0n) return null
+    const s = await planetContract().get_full_state(BigInt(planetId))
+    const planet = parsePlanet(s.planet, planetId)
+    if (!planet) return null
     return {
-      planetId: Number(planetId),
-      seed: p.seed,
-      seedJs: Number(BigInt(p.seed) % BigInt(2 ** 53)),
-      width: Number(p.width),
-      height: Number(p.height),
-      name: shortString.decodeShortString('0x' + BigInt(p.name).toString(16)),
-      population: Number(p.population),
-      actionCount: Number(p.action_count),
-      spawnedAt: Number(BigInt(p.spawned_at)),
-      lastActionAt: Number(BigInt(p.last_action_at)),
+      planet,
+      colony:    parseColony(s.colony),
+      resources: parseResources(s.resources),
+      assigned:  { count: Number(s.assigned_count) },
+      unassigned:{ count: Number(s.unassigned_count) },
+      buildings: parseBuildings(s.buildings),
+      invader:   parseInvader(s.invader),
+      gear:      { weapons: Number(s.gear.weapons), armor: Number(s.gear.armor) },
     }
-  } catch {
+  } catch (e) {
+    console.warn('[fetchFullState] error:', e)
     return null
   }
 }
 
 // ---------------------------------------------------------------------------
-// fetchColony
-//
-// Reads the Colony model from renderer_systems.get_colony.
-// Returns a plain JS object or null if the colony hasn't been founded.
+// Individual fetches (kept for targeted refreshes)
 // ---------------------------------------------------------------------------
+
+export async function fetchPlanet(planetId) {
+  try {
+    const p = await planetContract().get_planet(BigInt(planetId))
+    const result = parsePlanet(p, planetId)
+    if (!result) console.warn('[fetchPlanet] seed is 0 — not yet spawned')
+    return result
+  } catch (e) {
+    console.warn('[fetchPlanet] error:', e)
+    return null
+  }
+}
 
 export async function fetchColony(planetId) {
   try {
-    const contract = rendererContract()
-    const c = await contract.get_colony(BigInt(planetId))
-    if (!c || !c.founded) return null
-    return {
-      col: Number(c.col),
-      row: Number(c.row),
-      founded: Boolean(c.founded),
-      tcLevel: Number(c.tc_level),
-    }
-  } catch {
-    return null
-  }
+    return parseColony(await planetContract().get_colony(BigInt(planetId)))
+  } catch { return null }
 }
-
-// ---------------------------------------------------------------------------
-// fetchBuildings
-//
-// Reads all buildings on a planet from renderer_systems.get_planet_buildings.
-// Returns an array of { lon, lat, buildingType } objects.
-// buildingType: 0=Farm, 1=Mine, 2=Barracks, 3=Workshop
-// ---------------------------------------------------------------------------
 
 export async function fetchBuildings(planetId) {
   try {
-    const contract = rendererContract()
-    const buildings = await contract.get_planet_buildings(BigInt(planetId))
-    return Array.from(buildings).map((b) => ({
-      lon: Number(b.lon),
-      lat: Number(b.lat),
-      buildingType: Number(b.building_type),
-      terrainBonus: Number(b.terrain_bonus),
-      workers: Number(b.workers),
-      maxWorkers: Number(b.max_workers),
-      outputPerWorkerEpoch: Number(b.output_per_worker_epoch),
-    }))
-  } catch {
-    return []
-  }
+    return parseBuildings(await planetContract().get_planet_buildings(BigInt(planetId)))
+  } catch { return [] }
 }
 
 export async function fetchResources(planetId) {
   try {
-    const contract = rendererContract()
-    const r = await contract.get_resources(BigInt(planetId))
-    return {
-      water: Number(r.water),
-      iron: Number(r.iron),
-      defense: Number(r.defense),
-      lastUpdatedAt: Number(BigInt(r.last_updated_at)),
-    }
-  } catch {
-    return null
-  }
+    return parseResources(await planetContract().get_resources(BigInt(planetId)))
+  } catch { return null }
 }
 
 export async function fetchColonistsAssigned(planetId) {
   try {
-    const contract = rendererContract()
-    const ca = await contract.get_colonists_assigned(BigInt(planetId))
+    const ca = await planetContract().get_colonists_assigned(BigInt(planetId))
     return { count: Number(ca.count) }
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 export async function fetchColonistsUnassigned(planetId) {
   try {
-    const contract = rendererContract()
-    const cu = await contract.get_colonists_unassigned(BigInt(planetId))
+    const cu = await planetContract().get_colonists_unassigned(BigInt(planetId))
     return { count: Number(cu.count) }
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 export async function fetchInvader(planetId) {
   try {
-    const contract = rendererContract()
-    const inv = await contract.get_invader(BigInt(planetId))
-    return {
-      active: Boolean(inv.active),
-      strength: Number(inv.strength),
-      lon: Number(inv.lon),
-      lat: Number(inv.lat),
-      spawnedAt: Number(BigInt(inv.spawned_at)),
-    }
-  } catch {
-    return null
-  }
+    return parseInvader(await planetContract().get_invader(BigInt(planetId)))
+  } catch { return null }
 }
 
 export async function fetchGear(planetId) {
   try {
-    const contract = rendererContract()
-    const g = await contract.get_gear(BigInt(planetId))
-    return {
-      weapons: Number(g.weapons),
-      armor: Number(g.armor),
-    }
-  } catch {
-    return null
-  }
+    const g = await planetContract().get_gear(BigInt(planetId))
+    return { weapons: Number(g.weapons), armor: Number(g.armor) }
+  } catch { return null }
 }
 
 // ---------------------------------------------------------------------------
 // fetchPlayerPlanets
-//
-// Reads all planet IDs for a player from renderer_systems.get_player_planets.
-// Returns an array of BigInt planet IDs, or [] if none.
 // ---------------------------------------------------------------------------
 
 export async function fetchPlayerPlanets(playerAddress) {
   try {
-    const contract = rendererContract()
-    const ids = await contract.get_player_planets(playerAddress)
-    // ids is an Array<bigint> from the contract
+    const ids = await planetContract().get_player_planets(playerAddress)
     return Array.from(ids).map((id) => BigInt(id))
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }

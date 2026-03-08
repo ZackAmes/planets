@@ -41,25 +41,29 @@ fn _cell_noise(seed: felt252, col: u32, row: u32, period: u32) -> u32 {
 // Public noise API
 // ---------------------------------------------------------------------------
 
-/// Two-octave elevation noise 0-255.
+/// Three-octave elevation noise 0-255.
 /// Coarse octave (period 5) gives continental shapes;
-/// fine octave (period 20) adds local variation.
+/// mid octave (period 10) adds regional variation;
+/// fine octave (period 20) adds local detail.
 pub fn terrain_elevation(seed: felt252, col: u32, row: u32) -> u32 {
-    let e_coarse = _cell_noise(seed, col * 5 / GRID_COLS, row / 2, 5);
-    let e_fine = _cell_noise(seed + 1, col, row, GRID_COLS);
-    (e_coarse * 6 + e_fine * 4) / 10
+    let e_coarse = _cell_noise(seed,     col * 5 / GRID_COLS,  row / 2, 5);
+    let e_mid    = _cell_noise(seed + 3, col * 10 / GRID_COLS, row,     10);
+    let e_fine   = _cell_noise(seed + 1, col,                  row,     GRID_COLS);
+    (e_coarse * 5 + e_mid * 3 + e_fine * 2) / 10
 }
 
-/// Two-octave moisture noise 0-255.
+/// Three-octave moisture noise 0-255.
 pub fn terrain_moisture(seed: felt252, col: u32, row: u32) -> u32 {
-    let m_coarse = _cell_noise(seed + 7, col * 5 / GRID_COLS, row / 2, 5);
-    let m_fine = _cell_noise(seed + 13, col, row, GRID_COLS);
-    (m_coarse * 7 + m_fine * 3) / 10
+    let m_coarse = _cell_noise(seed + 7,  col * 5 / GRID_COLS,  row / 2, 5);
+    let m_mid    = _cell_noise(seed + 11, col * 10 / GRID_COLS, row,     10);
+    let m_fine   = _cell_noise(seed + 13, col,                  row,     GRID_COLS);
+    (m_coarse * 5 + m_mid * 3 + m_fine * 2) / 10
 }
 
 /// Map (elevation 0-255, moisture 0-255, latitude row 0-9) to terrain type 0-9.
-/// Polar rows (0,1,8,9) receive an elevation boost to produce snow/ice near
-/// the poles without needing temperature simulation.
+/// Polar rows get an elevation boost for snow/ice. A latitude temperature factor
+/// reduces effective moisture at high latitudes, producing more desert/scrubland
+/// near the poles and more forest at the equator — without extra hash calls.
 pub fn classify_terrain(elevation: u32, moisture: u32, row: u32) -> u32 {
     let polar_boost: u32 = if row == 0 || row == 9 {
         100_u32
@@ -76,9 +80,21 @@ pub fn classify_terrain(elevation: u32, moisture: u32, row: u32) -> u32 {
         elevation + polar_boost
     };
 
-    // Thresholds mirror client classifyTerrain (float 0-1 scaled x256):
-    //   ocean < 0.25  -> 64    shallow < 0.32 -> 82    beach < 0.38 -> 97
-    //   land  < 0.75  -> 192   mountain < 0.87 -> 222   else snow
+    // Temperature factor by latitude: 100 = equatorial, 20 = polar.
+    // Applied only within the land zone to shift biomes naturally.
+    let temp_factor: u32 = if row == 0 || row == 9 {
+        20_u32
+    } else if row == 1 || row == 8 {
+        40_u32
+    } else if row == 2 || row == 7 {
+        65_u32
+    } else if row == 3 || row == 6 {
+        85_u32
+    } else {
+        100_u32
+    };
+    let adj_moisture: u32 = moisture * temp_factor / 100;
+
     if elev < 64 {
         return 0_u32; // deep ocean
     }
@@ -89,14 +105,14 @@ pub fn classify_terrain(elevation: u32, moisture: u32, row: u32) -> u32 {
         return 8_u32; // beach
     }
     if elev < 192 {
-        // land zone
-        if moisture < 64 {
+        // land zone — use latitude-adjusted moisture for biome selection
+        if adj_moisture < 64 {
             return 4_u32; // desert
         }
-        if moisture < 102 {
+        if adj_moisture < 102 {
             return 9_u32; // scrubland
         }
-        if moisture < 140 {
+        if adj_moisture < 140 {
             if elev > 153 {
                 return 5_u32; // highland
             }
@@ -173,6 +189,19 @@ pub fn terrain_bonus(building_type: u8, terrain_type: u32) -> u8 {
         }
         return 20_u8;
     }
-    // TownCenter (0) and House (3) — no terrain output
+    if building_type == 5 {
+        // UraniumMine — rare deep-rock deposits
+        if terrain_type == 6 {
+            return 100_u8; // mountain
+        }
+        if terrain_type == 5 {
+            return 60_u8; // highland
+        }
+        if terrain_type == 4 {
+            return 40_u8; // desert
+        }
+        return 5_u8;
+    }
+    // TownCenter (0), House (3), Spaceport (6) — no terrain bonus
     0_u8
 }

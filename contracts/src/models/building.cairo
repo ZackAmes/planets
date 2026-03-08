@@ -2,11 +2,13 @@
 
 /// Building types.
 /// Discriminant maps 1:1 to the u8 stored in Building.building_type.
-///   0 = TownCenter  (auto-placed at colony founding, sets building limit)
-///   1 = WaterWell   (water / worker / epoch — terrain: shallow > beach > scrubland)
-///   2 = IronMine    (iron  / worker / epoch — terrain: mountain > highland)
-///   3 = House       (no workers, adds 20 to max_population)
-///   4 = Barracks    (defense / worker / epoch — terrain: mountain > highland)
+///   0 = TownCenter   (auto-placed, no workers — controls building limit and max building level)
+///   1 = WaterWell    (water / worker / epoch)
+///   2 = IronMine     (iron  / worker / epoch)
+///   3 = House        (no workers, spawns 1 colonist on build — costs iron + water)
+///   4 = Barracks     (defense / worker / epoch)
+///   5 = UraniumMine  (uranium / worker / epoch — unlocked at TC level 3)
+///   6 = Spaceport    (no workers, win condition — requires TC level 5)
 #[derive(Introspect, Drop, Serde, Copy, PartialEq)]
 pub enum BuildingType {
     TownCenter,
@@ -14,24 +16,20 @@ pub enum BuildingType {
     IronMine,
     House,
     Barracks,
+    UraniumMine,
+    Spaceport,
 }
 
 /// A building placed at a specific lon/lat on a planet.
 ///
-/// Coordinates (tenths of a degree):
-///   lon 0-3599   lat 0-1799
-///
-/// SVG canvas mapping (600x600 px):  x = lon/6,  y = lat/3
-///
-/// workers              : colonists currently assigned to this building.
-/// max_workers          : capacity for this type (0 for TC and House).
-/// output_per_worker_epoch: terrain-adjusted output per assigned worker per epoch.
-///   Formula: base * (50 + terrain_bonus) / 100
+/// level: current upgrade level (1–5, capped by tc_level).
+/// output_per_worker_epoch is recomputed on each upgrade:
+///   base * (50 + terrain_bonus) / 100 * level_factor / 100
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct Building {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub lon: u16,
     #[key]
@@ -39,6 +37,7 @@ pub struct Building {
     pub building_type: u8,
     pub exists: bool,
     pub terrain_bonus: u8,
+    pub level: u8,
     pub workers: u8,
     pub max_workers: u8,
     pub output_per_worker_epoch: u32,
@@ -49,7 +48,7 @@ pub struct Building {
 #[dojo::model]
 pub struct PlanetBuildingCount {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub count: u32,
 }
 
@@ -58,7 +57,7 @@ pub struct PlanetBuildingCount {
 #[dojo::model]
 pub struct PlanetBuildingEntry {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     #[key]
     pub index: u32,
     pub lon: u16,

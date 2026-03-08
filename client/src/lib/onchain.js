@@ -1,22 +1,20 @@
 /**
- * Contract interaction helpers.
- * Each write function takes a starknet.js WalletAccount and returns
- * transaction_hash on success, or throws on failure.
+ * Contract write helpers using starknet.js typedv2 / contract.populate().
+ * populate() uses the ABI to serialize named-object args — no manual calldata arrays.
  */
 
-import { shortString } from 'starknet'
+import { CallData, shortString } from 'starknet'
 import { CONFIG } from './config.js'
-import { mintCall, getProvider, fetchDenshokanPlanets } from './contracts.js'
+import { mintCall, getProvider, fetchDenshokanPlanets, planetContract, gameContract } from './contracts.js'
+
+// Cartridge VRF provider — same address on mainnet and sepolia.
+// Kept as raw calldata since VRF ABI isn't in our manifest.
+const VRF_ADDRESS = '0x051fea4450da9d6aee758bdeba88b2f665bcbf549d2c61421aa724e9ac0ced8f'
 
 // ---------------------------------------------------------------------------
 // denshokan — mint
 // ---------------------------------------------------------------------------
 
-/**
- * Mint a game token via the Denshokan contract.
- * Waits for the tx, then fetches the player's planet list to get the new tokenId.
- * Returns { transaction_hash, tokenId }.
- */
 export async function mintGame(account, playerName) {
   const call = mintCall(account.address, playerName)
   const { transaction_hash } = await account.execute([call])
@@ -31,156 +29,107 @@ export async function mintGame(account, playerName) {
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize a planet for the given token id.
- * The seed is assigned by the Cartridge VRF onchain, so we wait for the tx
- * to be confirmed and let the caller fetch the planet to get the seed.
+ * Spawn a planet. Cartridge VRF requires request_random first in the same
+ * multicall. request_random uses raw calldata since VRF ABI isn't local;
+ * spawn_planet uses populate() for type-safe encoding.
  */
 export async function spawnPlanet(account, planetId, name) {
-  const nameFelt = shortString.encodeShortString(name)
-  const { transaction_hash } = await account.execute([
+  const pc = planetContract()
+  const calls = [
+    // 1. Seed the VRF — raw calldata (external contract, no local ABI)
     {
-      contractAddress: CONFIG.planetSystemsAddress,
-      entrypoint: 'spawn_planet',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16), // u64
-        nameFelt,                              // felt252
-      ],
+      contractAddress: VRF_ADDRESS,
+      entrypoint: 'request_random',
+      calldata: CallData.compile([
+        CONFIG.planetSystemsAddress, // caller: the contract that calls consume_random
+        '0',                         // Source::Nonce discriminant
+        account.address,             // Source::Nonce(player_address)
+      ]),
     },
-  ])
-  await waitForTx(getProvider(), transaction_hash)
+    // 2. Spawn — consume_random(Source::Nonce(player_address)) called internally
+    pc.populate('spawn_planet', {
+      planet_id: planetId,
+      name: shortString.encodeShortString(name),
+    }),
+  ]
+
+  console.log('[spawnPlanet] calls:', JSON.stringify(calls, null, 2))
+  const result = await account.execute(calls)
+  console.log('[spawnPlanet] tx hash:', result.transaction_hash)
+  const receipt = await waitForTx(getProvider(), result.transaction_hash)
+  console.log('[spawnPlanet] receipt:', receipt)
 }
 
 // ---------------------------------------------------------------------------
 // game_systems
 // ---------------------------------------------------------------------------
 
-/**
- * Place the colony at (col, row) on the planet.
- */
 export async function foundColony(account, planetId, col, row) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'found_colony',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16), // u64
-        col.toString(),                        // u32
-        row.toString(),                        // u32
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('found_colony', { planet_id: planetId, col, row })
+  )
   return transaction_hash
 }
 
-/**
- * Construct a building at (lon, lat) on the planet.
- * buildingType: 0=Farm, 1=Mine, 2=Barracks, 3=Workshop
- * lon 0-359, lat 0-179
- */
 export async function constructBuilding(account, planetId, lon, lat, buildingType) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'construct_building',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16), // u64
-        lon.toString(),                        // u16
-        lat.toString(),                        // u16
-        buildingType.toString(),               // BuildingType enum discriminant (felt252)
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('construct_building', { planet_id: planetId, lon, lat, building_type: buildingType })
+  )
   return transaction_hash
 }
 
-/**
- * Assign workers to a building at (lon, lat).
- * workers: total workers to assign (not delta). 0 to remove all.
- */
 export async function assignWorkers(account, planetId, lon, lat, workers) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'assign_workers',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16), // u64
-        lon.toString(),                        // u16
-        lat.toString(),                        // u16
-        workers.toString(),                    // u8
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('assign_workers', { planet_id: planetId, lon, lat, workers })
+  )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
 
-/**
- * Upgrade the Town Center to the next level.
- */
 export async function upgradeTc(account, planetId) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'upgrade_tc',
-      calldata: ['0x' + BigInt(planetId).toString(16)],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('upgrade_tc', { planet_id: planetId })
+  )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
 
-/**
- * Craft weapons and/or armor. Costs iron.
- */
+export async function upgradeBuilding(account, planetId, lon, lat) {
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('upgrade_building', { planet_id: planetId, lon, lat })
+  )
+  await waitForTx(getProvider(), transaction_hash)
+  return transaction_hash
+}
+
 export async function craftGear(account, planetId, weapons, armor) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'craft_gear',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16),
-        weapons.toString(),
-        armor.toString(),
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('craft_gear', { planet_id: planetId, weapons, armor })
+  )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
 
-/**
- * Fight the active invader with unassigned colonists.
- */
 export async function fightInvader(account, planetId, colonists, weapons, armor) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'fight_invader',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16),
-        colonists.toString(),
-        weapons.toString(),
-        armor.toString(),
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('fight_invader', { planet_id: planetId, colonists, weapons, armor })
+  )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
 
-/**
- * Tick resources and collect (no-op if called too soon).
- */
 export async function collect(account, planetId) {
-  const { transaction_hash } = await account.execute([
-    {
-      contractAddress: CONFIG.gameSystemsAddress,
-      entrypoint: 'collect',
-      calldata: [
-        '0x' + BigInt(planetId).toString(16), // u64
-      ],
-    },
-  ])
+  const gc = gameContract()
+  const { transaction_hash } = await account.execute(
+    gc.populate('collect', { planet_id: planetId })
+  )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash
 }
@@ -189,13 +138,9 @@ export async function collect(account, planetId) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Wait for a transaction to be accepted on L2.
- */
 export async function waitForTx(provider, txHash) {
   return provider.waitForTransaction(txHash, {
     retryInterval: 1500,
     successStates: ['ACCEPTED_ON_L2', 'SUCCEEDED'],
   })
 }
-

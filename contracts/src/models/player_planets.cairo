@@ -21,5 +21,5 @@ pub struct PlayerPlanetEntry {
     pub player: ContractAddress,
     #[key]
     pub index: u32,
-    pub planet_id: u64,
+    pub planet_id: felt252,
 }

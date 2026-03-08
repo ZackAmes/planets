@@ -8,7 +8,7 @@
 #[dojo::model]
 pub struct Invader {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub active: bool,
     pub strength: u32,
     pub lon: u16,

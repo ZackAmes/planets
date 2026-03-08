@@ -21,7 +21,7 @@ pub enum TerrainType {
 #[dojo::model]
 pub struct Planet {
     #[key]
-    pub planet_id: u64,
+    pub planet_id: felt252,
     pub owner: ContractAddress,
     pub seed: felt252,
     pub width: u32,

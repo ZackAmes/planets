@@ -12,17 +12,33 @@ export const EPOCH_SECONDS = 600   // 10 minutes per epoch
 export const MAX_EPOCHS    = 144   // cap at 24 hours
 
 // Building type constants (must match BuildingType enum discriminants in Cairo)
-export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOUSE: 3, BARRACKS: 4 }
+export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOUSE: 3, BARRACKS: 4, URANIUM_MINE: 5, SPACEPORT: 6 }
 
 export const BUILDING_INFO = [
-  { type: 0, name: 'Town Center', color: '#ffdd44', ironCost: 0,   waterCost: 0,  maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Colony hub. Upgrade to raise the population cap.' },
-  { type: 1, name: 'Water Well',  color: '#44aaff', ironCost: 50,  waterCost: 0,  maxWorkers: 3, baseOutput: 10, resource: 'water',   description: 'Water / worker / epoch (terrain: coastal > beach > scrubland)' },
-  { type: 2, name: 'Iron Mine',   color: '#aaaaaa', ironCost: 80,  waterCost: 0,  maxWorkers: 3, baseOutput: 8,  resource: 'iron',    description: 'Iron / worker / epoch (terrain: mountain > highland > desert)' },
-  { type: 3, name: 'House',       color: '#44ff88', ironCost: 60,  waterCost: 50, maxWorkers: 0, baseOutput: 0,  resource: null,      description: 'Spawns 1 new colonist immediately (requires pop below cap).' },
-  { type: 4, name: 'Barracks',    color: '#4466ff', ironCost: 100, waterCost: 0,  maxWorkers: 3, baseOutput: 8,  resource: 'defense', description: 'Defense / worker / epoch (terrain: mountain > highland)' },
+  { type: 0, name: 'Town Center',  color: '#ffdd44', ironCost: 0,   waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0, resource: null,      minTcLevel: 1, description: 'Colony hub. Upgrade to expand building slots and raise max building level.' },
+  { type: 1, name: 'Water Well',   color: '#44aaff', ironCost: 50,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 10, resource: 'water',  minTcLevel: 1, description: 'Water / worker / epoch (terrain: coastal > beach > scrubland)' },
+  { type: 2, name: 'Iron Mine',    color: '#aaaaaa', ironCost: 80,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 8,  resource: 'iron',   minTcLevel: 1, description: 'Iron / worker / epoch (terrain: mountain > highland > desert)' },
+  { type: 3, name: 'House',        color: '#44ff88', ironCost: 60,  waterCost: 50, uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Spawns 1 new colonist immediately (requires pop below cap).' },
+  { type: 4, name: 'Barracks',     color: '#4466ff', ironCost: 100, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 8,  resource: 'defense',minTcLevel: 1, description: 'Defense / worker / epoch (terrain: mountain > highland)' },
+  { type: 5, name: 'Uranium Mine', color: '#bb44ff', ironCost: 200, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 3,  resource: 'uranium',minTcLevel: 3, description: 'Uranium / worker / epoch. Required for high-tier upgrades. (terrain: mountain)' },
+  { type: 6, name: 'Spaceport',    color: '#ffffff', ironCost: 500, waterCost: 0,  uraniumCost: 100, maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 5, description: 'WIN CONDITION — launch your colony to the stars. Requires max TC level.' },
 ]
 
-export const TC_UPGRADE_COST = (tcLevel) => tcLevel * 100 // iron cost to upgrade TC
+/** Iron + uranium cost to upgrade TC from tcLevel → tcLevel+1 */
+export function tcUpgradeCost(tcLevel) {
+  return {
+    iron: tcLevel * 100,
+    uranium: tcLevel === 3 ? 10 : tcLevel === 4 ? 25 : 0,
+  }
+}
+
+/** Iron + uranium cost to upgrade a building from level → level+1 */
+export function upgradeBuildingCost(level) {
+  return {
+    iron: 80 * level,
+    uranium: level === 3 ? 5 : level === 4 ? 15 : 0,
+  }
+}
 
 // Terrain type indices (match terrain.cairo)
 const TERRAIN_NAMES = [
@@ -50,17 +66,21 @@ function cellNoise(seed, col, row, period) {
 function gridElevation(seed, col, row) {
   const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
   const cRow = Math.floor(row / 2)
+  const mCol = Math.floor(col * 10 / TERRAIN_GRID_COLS)
   const eCoarse = cellNoise(seed,        cCol, cRow, 5)
+  const eMid    = cellNoise(seed + 3n,   mCol, row,  10)
   const eFine   = cellNoise(seed + 1n,   col,  row,  TERRAIN_GRID_COLS)
-  return Math.floor((eCoarse * 6 + eFine * 4) / 10)
+  return Math.floor((eCoarse * 5 + eMid * 3 + eFine * 2) / 10)
 }
 
 function gridMoisture(seed, col, row) {
   const cCol = Math.floor(col * 5 / TERRAIN_GRID_COLS)
   const cRow = Math.floor(row / 2)
+  const mCol = Math.floor(col * 10 / TERRAIN_GRID_COLS)
   const mCoarse = cellNoise(seed + 7n,  cCol, cRow, 5)
+  const mMid    = cellNoise(seed + 11n, mCol, row,  10)
   const mFine   = cellNoise(seed + 13n, col,  row,  TERRAIN_GRID_COLS)
-  return Math.floor((mCoarse * 7 + mFine * 3) / 10)
+  return Math.floor((mCoarse * 5 + mMid * 3 + mFine * 2) / 10)
 }
 
 function classifyTerrainInt(elevation, moisture, row) {
@@ -69,13 +89,22 @@ function classifyTerrainInt(elevation, moisture, row) {
                    : (row === 2 || row === 7) ? 20
                    : 0
   const elev = Math.min(255, elevation + polarBoost)
+
+  // Temperature factor by latitude: 100 = equatorial, 20 = polar.
+  const tempFactor = (row === 0 || row === 9) ? 20
+                   : (row === 1 || row === 8) ? 40
+                   : (row === 2 || row === 7) ? 65
+                   : (row === 3 || row === 6) ? 85
+                   : 100
+  const adjMoisture = Math.floor(moisture * tempFactor / 100)
+
   if (elev < 64)  return 0  // deep ocean
   if (elev < 82)  return 1  // shallow ocean
   if (elev < 97)  return 8  // beach
   if (elev < 192) {
-    if (moisture < 64)  return 4  // desert
-    if (moisture < 102) return 9  // scrubland
-    if (moisture < 140) return elev > 153 ? 5 : 2  // highland or grassland
+    if (adjMoisture < 64)  return 4  // desert
+    if (adjMoisture < 102) return 9  // scrubland
+    if (adjMoisture < 140) return elev > 153 ? 5 : 2  // highland or grassland
     return 3  // forest
   }
   if (elev < 222) return 6  // mountain
@@ -127,7 +156,13 @@ export function terrainBonus(buildingType, terrainType) {
     if (terrainType === 3) return 30   // forest
     return 20
   }
-  return 0  // TownCenter and House have no terrain bonus
+  if (buildingType === BUILDING_TYPES.URANIUM_MINE) {
+    if (terrainType === 6) return 100  // mountain
+    if (terrainType === 5) return 60   // highland
+    if (terrainType === 4) return 40   // desert
+    return 5
+  }
+  return 0  // TownCenter, House, Spaceport have no terrain bonus
 }
 
 /** output per worker per epoch = base * (50 + bonus) / 100 */
@@ -169,15 +204,17 @@ export function previewConstruct(resources, buildingType, seedFull, lon, lat) {
   const bonus   = terrainBonus(buildingType, terrain)
   const output  = buildingOutputPerWorkerEpoch(buildingType, bonus)
 
-  const hasIron  = (resources?.iron  ?? 0) >= info.ironCost
-  const hasWater = (resources?.water ?? 0) >= (info.waterCost ?? 0)
-  const canBuild = hasIron && hasWater
-  const reason = !hasIron  ? `Need ${info.ironCost} iron (have ${resources?.iron ?? 0})`
-               : !hasWater ? `Need ${info.waterCost} water (have ${resources?.water ?? 0})`
+  const hasIron    = (resources?.iron    ?? 0) >= info.ironCost
+  const hasWater   = (resources?.water   ?? 0) >= (info.waterCost   ?? 0)
+  const hasUranium = (resources?.uranium ?? 0) >= (info.uraniumCost ?? 0)
+  const canBuild   = hasIron && hasWater && hasUranium
+  const reason = !hasIron    ? `Need ${info.ironCost} iron (have ${resources?.iron ?? 0})`
+               : !hasWater   ? `Need ${info.waterCost} water (have ${resources?.water ?? 0})`
+               : !hasUranium ? `Need ${info.uraniumCost} uranium (have ${resources?.uranium ?? 0})`
                : null
   return {
     canBuild, reason,
-    ironCost: info.ironCost,
+    ironCost: info.ironCost, uraniumCost: info.uraniumCost ?? 0,
     terrain, terrainName: terrainName(terrain), bonus, output,
   }
 }
@@ -187,15 +224,16 @@ export function previewConstruct(resources, buildingType, seedFull, lon, lat) {
 // ---------------------------------------------------------------------------
 
 export function computeRates(buildings, population) {
-  let waterRate = 0, ironRate = 0, defenseRate = 0
+  let waterRate = 0, ironRate = 0, defenseRate = 0, uraniumRate = 0
   for (const b of buildings) {
     const w = b.workers ?? 0
-    if (b.buildingType === 1) waterRate  += w * (b.outputPerWorkerEpoch ?? 0)
-    if (b.buildingType === 2) ironRate   += w * (b.outputPerWorkerEpoch ?? 0)
+    if (b.buildingType === 1) waterRate   += w * (b.outputPerWorkerEpoch ?? 0)
+    if (b.buildingType === 2) ironRate    += w * (b.outputPerWorkerEpoch ?? 0)
     if (b.buildingType === 4) defenseRate += w * (b.outputPerWorkerEpoch ?? 0)
+    if (b.buildingType === 5) uraniumRate += w * (b.outputPerWorkerEpoch ?? 0)
   }
   const waterConsumed = population ?? 0
-  return { waterRate, ironRate, defenseRate, waterConsumed, netWater: waterRate - waterConsumed }
+  return { waterRate, ironRate, defenseRate, uraniumRate, waterConsumed, netWater: waterRate - waterConsumed }
 }
 
 // ---------------------------------------------------------------------------
