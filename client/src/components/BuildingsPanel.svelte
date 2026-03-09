@@ -54,10 +54,10 @@
   const busy = $derived(building ? isBusyBuilding(building) : false)
   const countdown = $derived(building ? buildingCountdown(building) : null)
   const canUpgrade = $derived(
-    !busy && 
-    bLevel < tcLevel && 
-    (resources?.iron ?? 0) >= upCost.iron && 
-    (resources?.uranium ?? 0) >= upCost.uranium
+    !busy &&
+    bLevel < 3 &&
+    bLevel < tcLevel &&
+    (resources?.iron ?? 0) >= upCost.iron
   )
   const totalOutput = $derived((building?.workers ?? 0) * (building?.outputPerWorkerEpoch ?? 0))
 </script>
@@ -73,10 +73,10 @@
       <span class="blevel dim">lv{bLevel}</span>
       {#if busy}
         <span class="busy-label">{busyLabel(building)} {countdown}</span>
-      {:else if bLevel < 5}
+      {:else if bLevel < 3}
         <button class="upgrade-btn" onclick={() => onupgradebuilding?.(building.lon, building.lat)}
-          disabled={!canUpgrade || disabled} 
-          title="Upgrade ({upCost.iron} iron{upCost.uranium > 0 ? ` + ${upCost.uranium} U` : ''})">
+          disabled={!canUpgrade || disabled}
+          title="Upgrade ({upCost.iron} iron)">
           +lv
         </button>
       {/if}
@@ -92,7 +92,7 @@
         <span class="output-tag training">+{bLevel} str/session</span>
       {:else if totalOutput > 0}
         <span class="output-tag">
-          {building.buildingType === 8 ? `+${totalOutput} def+dmg/ep` : `+${totalOutput} ${info?.resource}/ep`}
+          {building.buildingType === 8 ? `+${totalOutput} def/ep` : `+${totalOutput} ${info?.resource}/ep`}
         </span>
       {/if}
     </div>

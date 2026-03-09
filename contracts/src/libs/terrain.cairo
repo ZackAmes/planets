@@ -20,10 +20,10 @@
 
 use core::poseidon::poseidon_hash_span;
 
-pub const GRID_COLS: u32 = 80;
+pub const GRID_COLS: u32 = 50;
 pub const GRID_ROWS: u32 = 40;
-// lon 0-3599 / 80 cols = 45 units per col
-pub const LON_PER_COL: u32 = 45;
+// lon 0-3599 / 50 cols = 72 units per col
+pub const LON_PER_COL: u32 = 72;
 // lat 0-1799 / 40 rows = 45 units per row
 pub const LAT_PER_ROW: u32 = 45;
 

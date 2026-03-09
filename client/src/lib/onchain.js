@@ -125,19 +125,10 @@ export async function upgradeBuilding(account, planetId, lon, lat) {
   return transaction_hash
 }
 
-export async function craftGear(account, planetId, weapons, armor) {
+export async function fightInvader(account, planetId, colonists) {
   const gc = gameContract()
   const { transaction_hash } = await account.execute(
-    gc.populate('craft_gear', { planet_id: planetId, weapons, armor })
-  )
-  await waitForTx(getProvider(), transaction_hash)
-  return transaction_hash
-}
-
-export async function fightInvader(account, planetId, colonists, weapons, armor) {
-  const gc = gameContract()
-  const { transaction_hash } = await account.execute(
-    gc.populate('fight_invader', { planet_id: planetId, colonists, weapons, armor })
+    gc.populate('fight_invader', { planet_id: planetId, colonists })
   )
   await waitForTx(getProvider(), transaction_hash)
   return transaction_hash

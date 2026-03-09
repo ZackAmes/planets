@@ -8,6 +8,10 @@ import { hash } from 'starknet'
 export const PLANET_WIDTH  = 50
 export const PLANET_HEIGHT = 40
 
+// Hex grid for colony placement (50x40)
+export const LON_PER_HEX = 72   // 3600 / 50
+export const LAT_PER_HEX = 45   // 1800 / 40
+
 export const EPOCH_SECONDS = 120   // 2 minutes per epoch
 export const MAX_EPOCHS    = 720   // cap at 24 hours
 
@@ -16,30 +20,24 @@ export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOU
 
 export const BUILDING_INFO = [
   { type: 0, name: 'Town Center',  color: '#ffdd44', ironCost: 0,   waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0, resource: null,      minTcLevel: 1, description: 'Colony hub. Upgrade to expand building slots and raise max building level.' },
-  { type: 1, name: 'Water Well',   color: '#44aaff', ironCost: 50,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 10, resource: 'water',  minTcLevel: 1, description: 'Water / worker / epoch (terrain: beach > plains > forest)' },
+  { type: 1, name: 'Water Well',   color: '#44aaff', ironCost: 50,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 1, baseOutput: 15, resource: 'water',  minTcLevel: 1, description: 'Water / worker / epoch (terrain: beach > plains > forest). Worker cap scales with level: 1 -> 2 -> 3.' },
   { type: 2, name: 'Iron Mine',    color: '#aaaaaa', ironCost: 80,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 8,  resource: 'iron',   minTcLevel: 1, description: 'Iron / worker / epoch (terrain: mountain > desert > forest)' },
   { type: 3, name: 'House',        color: '#44ff88', ironCost: 60,  waterCost: 50, uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Spawns 1 new colonist immediately (requires pop below cap).' },
   { type: 4, name: 'Barracks',     color: '#4466ff', ironCost: 100, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Trains assigned colonists: +level strength/epoch, up to max 10. Stronger fighters deal more damage in combat.' },
   { type: 5, name: 'Uranium Mine', color: '#bb44ff', ironCost: 200, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 3,  resource: 'uranium',minTcLevel: 3, description: 'Uranium / worker / epoch. Required for high-tier upgrades. (terrain: mountain > desert)' },
-  { type: 6, name: 'Spaceport',    color: '#ffffff', ironCost: 500, waterCost: 0,  uraniumCost: 100, maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 5, description: 'WIN CONDITION — launch your colony to the stars. Requires max TC level.' },
-  { type: 7, name: 'Workshop',     color: '#ff9933', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 2, description: 'Unlocks gear crafting. Required before weapons and armor can be produced.' },
+  { type: 6, name: 'Spaceport',    color: '#ffffff', ironCost: 500, waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 3, description: 'WIN CONDITION — launch your colony to the stars. Requires TC level 3.' },
+  { type: 7, name: 'Workshop',     color: '#ff9933', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 2, description: 'Provides a passive defense bonus to your colony.' },
   { type: 8, name: 'Cannon',       color: '#ff4400', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 6,  resource: 'defense',minTcLevel: 1, description: 'Produces defense/ep AND fires on active invaders each epoch, reducing their strength. (terrain: mountain > snow > plains)' },
 ]
 
-/** Iron + uranium cost to upgrade TC from tcLevel → tcLevel+1 */
+/** Iron cost to upgrade TC from tcLevel → tcLevel+1 (max TC level 3) */
 export function tcUpgradeCost(tcLevel) {
-  return {
-    iron: tcLevel * 100,
-    uranium: tcLevel === 3 ? 10 : tcLevel === 4 ? 25 : 0,
-  }
+  return { iron: tcLevel * 100 }
 }
 
-/** Iron + uranium cost to upgrade a building from level → level+1 */
+/** Iron cost to upgrade a building from level → level+1 (max level 3) */
 export function upgradeBuildingCost(level) {
-  return {
-    iron: 80 * level,
-    uranium: level === 3 ? 5 : level === 4 ? 15 : 0,
-  }
+  return { iron: 80 * level }
 }
 
 // Terrain type indices (match terrain.cairo) — simplified 7-biome set
@@ -57,11 +55,42 @@ const TERRAIN_NAMES = [
   'Scrubland',   // 9 (unused — merged into plains)
 ]
 
-// Grid dimensions — must match terrain.cairo constants
-const TERRAIN_GRID_COLS = 80
-const TERRAIN_GRID_ROWS = 40
-const LON_PER_COL = 45   // 3600 / 80
-const LAT_PER_ROW = 45   // 1800 / 40
+// Unified client terrain grid (50x40)
+const TERRAIN_GRID_COLS = PLANET_WIDTH
+const TERRAIN_GRID_ROWS = PLANET_HEIGHT
+const LON_PER_COL = LON_PER_HEX
+const LAT_PER_ROW = LAT_PER_HEX
+
+/**
+ * Snap lon/lat to the colony hex center (50x40), used by found_colony(col,row).
+ */
+export function snapToHexCenter(lon, lat) {
+  const safeLon = Math.min(3599, Math.max(0, lon))
+  const safeLat = Math.min(1799, Math.max(0, lat))
+  
+  const col = Math.floor(safeLon / LON_PER_HEX)
+  const row = Math.floor(safeLat / LAT_PER_HEX)
+  const clampedCol = Math.min(PLANET_WIDTH - 1, Math.max(0, col))
+  const clampedRow = Math.min(PLANET_HEIGHT - 1, Math.max(0, row))
+  
+  const centerLon = clampedCol * LON_PER_HEX + Math.floor(LON_PER_HEX / 2)
+  const centerLat = clampedRow * LAT_PER_HEX + Math.floor(LAT_PER_HEX / 2)
+  
+  return { lon: centerLon, lat: centerLat, col: clampedCol, row: clampedRow }
+}
+
+/** Build/founding both use the same tile snap now. */
+export const snapToTerrainTileCenter = snapToHexCenter
+
+/** Get the four corners of a terrain tile in lon/lat. */
+export function getTileBounds(col, row) {
+  return {
+    minLon: col * LON_PER_COL,
+    maxLon: (col + 1) * LON_PER_COL,
+    minLat: row * LAT_PER_ROW,
+    maxLat: (row + 1) * LAT_PER_ROW,
+  }
+}
 
 /**
  * Exact JS mirror of terrain.cairo's _cell_noise.
@@ -116,7 +145,7 @@ function classifyTerrainInt(elevation, moisture, row) {
 }
 
 /**
- * Terrain type (0-9) at a given lon/lat. Exact match to terrain.cairo terrain_at().
+ * Terrain type (0-9) at a given lon/lat on the unified client grid.
  * seed must be a BigInt (planet.seedFull — the full felt252 planet seed).
  * lat defaults to equator (900) for callers that don't have lat yet.
  */
@@ -248,35 +277,30 @@ export function computeRates(buildings, population) {
       cannonDamageRate += w * (b.outputPerWorkerEpoch ?? 0)
     }
   }
-  const waterConsumed = population ?? 0
+  const waterConsumed = (population ?? 0) * 5
   return { waterRate, ironRate, defenseRate, uraniumRate, cannonDamageRate, waterConsumed, netWater: waterRate - waterConsumed }
 }
 
 // ---------------------------------------------------------------------------
-// Gear / combat
+// Combat
 // ---------------------------------------------------------------------------
-
-export const WEAPON_COST = 20   // iron
-export const ARMOR_COST  = 30   // iron
 
 export const COLONIST_DEFAULT_STRENGTH = 2
 export const COLONIST_MAX_STRENGTH = 10
-export const WEAPON_POWER = 5
-export const ARMOR_POWER  = 3
 
 /**
  * Preview fight outcome before sending the tx.
  * avgStrength: average strength of unassigned colonists (default COLONIST_DEFAULT_STRENGTH).
- * Returns { willWin, fighterPower, invaderStrength, estimatedCasualties, avgStrength }.
+ * Returns { willWin, fighterPower, invaderStrength, estimatedCasualties }.
  */
-export function previewFight(invader, colonists, avgStrength, weapons, armor) {
+export function previewFight(invader, colonists, avgStrength) {
   const str = avgStrength ?? COLONIST_DEFAULT_STRENGTH
-  const fighterPower = colonists * str + weapons * WEAPON_POWER + armor * ARMOR_POWER
+  const fighterPower = colonists * str
   const willWin = fighterPower >= invader.strength
   const estimatedCasualties = willWin
     ? Math.floor(invader.strength / 20)
     : Math.min(colonists, Math.floor((invader.strength - fighterPower) / 5) + 1)
-  return { willWin, fighterPower, invaderStrength: invader.strength, estimatedCasualties, avgStrength: str }
+  return { willWin, fighterPower, invaderStrength: invader.strength, estimatedCasualties }
 }
 
 // ---------------------------------------------------------------------------
@@ -284,8 +308,13 @@ export function previewFight(invader, colonists, avgStrength, weapons, armor) {
 // ---------------------------------------------------------------------------
 
 export function lonLatToLocal(lon, lat, radius = 8.15) {
-  const phi   = (lon / 3600) * Math.PI * 2
-  const theta = (lat / 1800) * Math.PI
+  // Convert lon/lat (in the range 0-3599 and 0-1799) to radians
+  // lon: 0-3599 maps to 0-2π (full circle around equator)
+  // lat: 0-1799 maps to π-0 (from north pole to south pole in scene orientation)
+  // Add π/2 offset to phi to align with texture UV mapping
+  const phi   = (lon / 3600) * Math.PI * 2 + Math.PI / 2  // longitude: 0 to 2π, offset by 90°
+  const theta = (1 - lat / 1800) * Math.PI                 // latitude: 0 (north) to π (south)
+  
   return [
     -Math.sin(phi) * Math.sin(theta) * radius,
      Math.cos(theta) * radius,
@@ -294,10 +323,13 @@ export function lonLatToLocal(lon, lat, radius = 8.15) {
 }
 
 export function uvToLonLat(uvX, uvY) {
-  return {
-    lon: Math.min(3599, Math.floor(uvX * 3600)),
-    lat: Math.min(1799, Math.floor((1 - uvY) * 1800)),
-  }
+  // UV coordinates: uvX (0-1) is longitude, uvY (0-1) is latitude
+  // Match lonLatToLocal(): uvY=0 => lat=0 (north pole), uvY=1 => lat=1799 (south pole)
+  // Flip uvX so longitude increases left-to-right (west to east)
+  // Use 3599 and 1799 as max to ensure we stay in bounds (0-3599, 0-1799)
+  const lon = Math.min(3599, Math.max(0, Math.floor((1 - uvX) * 3600)))
+  const lat = Math.min(1799, Math.max(0, Math.floor(uvY * 1800)))
+  return { lon, lat }
 }
 
 export function formatLonLat(lon, lat) {

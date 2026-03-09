@@ -14,6 +14,9 @@ mod renderer_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
     use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
+    use planets::models::colony::Colony;
+    use planets::models::resources::Resources;
+    use planets::models::invader::Invader;
     use planets::utils::renderer::encoding::U256BytesUsedTraitImpl;
     use planets::utils::renderer::renderer_utils::{create_metadata, generate_svg};
     use dojo::world::WorldStorage;
@@ -45,10 +48,18 @@ mod renderer_systems {
         fn game_details(self: @ContractState, token_id: felt252) -> Span<GameDetail> {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(token_id);
+            let colony: Colony = world.read_model(token_id);
+            let resources: Resources = world.read_model(token_id);
+            let tc_u32: u32 = colony.tc_level.into();
             array![
                 GameDetail { name: 'Population', value: planet.population.into() },
-                GameDetail { name: 'Turns', value: planet.action_count.into() },
-                GameDetail { name: 'Seed', value: planet.seed },
+                GameDetail { name: 'Pop Cap', value: (tc_u32 * 10_u32).into() },
+                GameDetail { name: 'TC Level', value: colony.tc_level.into() },
+                GameDetail { name: 'Water', value: resources.water.into() },
+                GameDetail { name: 'Iron', value: resources.iron.into() },
+                GameDetail { name: 'Defense', value: resources.defense.into() },
+                GameDetail { name: 'Uranium', value: resources.uranium.into() },
+                GameDetail { name: 'Age (epochs)', value: ((resources.last_updated_at - colony.founded_at) / 120).into() },
             ]
                 .span()
         }
@@ -104,7 +115,10 @@ mod renderer_systems {
             let planet: Planet = world.read_model(token_id);
             let planet_name = planet.name;
             let buildings = _read_buildings(@world, token_id);
-            generate_svg(token_id, planet, planet_name, buildings.span())
+            let colony: Colony = world.read_model(token_id);
+            let resources: Resources = world.read_model(token_id);
+            let invader: Invader = world.read_model(token_id);
+            generate_svg(token_id, planet, planet_name, buildings.span(), colony, resources, invader)
         }
     }
 
@@ -115,7 +129,12 @@ mod renderer_systems {
             let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
             let buildings = _read_buildings(@world, planet_id);
-            create_metadata(planet_id, planet, planet_name, buildings.span())
+            let colony: Colony = world.read_model(planet_id);
+            let resources: Resources = world.read_model(planet_id);
+            let invader: Invader = world.read_model(planet_id);
+            create_metadata(
+                planet_id, planet, planet_name, buildings.span(), colony, resources, invader,
+            )
         }
 
         fn generate_svg(self: @ContractState, planet_id: felt252) -> ByteArray {
@@ -123,16 +142,29 @@ mod renderer_systems {
             let planet: Planet = world.read_model(planet_id);
             let planet_name = planet.name;
             let buildings = _read_buildings(@world, planet_id);
-            generate_svg(planet_id, planet, planet_name, buildings.span())
+            let colony: Colony = world.read_model(planet_id);
+            let resources: Resources = world.read_model(planet_id);
+            let invader: Invader = world.read_model(planet_id);
+            generate_svg(
+                planet_id, planet, planet_name, buildings.span(), colony, resources, invader,
+            )
         }
 
         fn generate_details(self: @ContractState, planet_id: felt252) -> Span<GameDetail> {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(planet_id);
+            let colony: Colony = world.read_model(planet_id);
+            let resources: Resources = world.read_model(planet_id);
+            let tc_u32: u32 = colony.tc_level.into();
             array![
                 GameDetail { name: 'Population', value: planet.population.into() },
-                GameDetail { name: 'Turns', value: planet.action_count.into() },
-                GameDetail { name: 'Seed', value: planet.seed },
+                GameDetail { name: 'Pop Cap', value: (tc_u32 * 10_u32).into() },
+                GameDetail { name: 'TC Level', value: colony.tc_level.into() },
+                GameDetail { name: 'Water', value: resources.water.into() },
+                GameDetail { name: 'Iron', value: resources.iron.into() },
+                GameDetail { name: 'Defense', value: resources.defense.into() },
+                GameDetail { name: 'Uranium', value: resources.uranium.into() },
+                GameDetail { name: 'Age (epochs)', value: ((resources.last_updated_at - colony.founded_at) / 120).into() },
             ]
                 .span()
         }

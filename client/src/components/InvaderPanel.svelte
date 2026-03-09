@@ -1,10 +1,9 @@
 <script>
-  import { previewFight, WEAPON_COST, ARMOR_COST, COLONIST_DEFAULT_STRENGTH, WEAPON_POWER, ARMOR_POWER } from '../lib/gameLogic.js'
+  import { previewFight, COLONIST_DEFAULT_STRENGTH } from '../lib/gameLogic.js'
 
   let {
     invader,
     unassigned,
-    gear,
     resources,
     cannonDamageRate = 0,
     onfight,
@@ -12,8 +11,6 @@
   } = $props()
 
   let fightColonists = $state(1)
-  let fightWeapons = $state(0)
-  let fightArmor = $state(0)
 
   const avgFighterStrength = $derived(
     unassigned?.count > 0
@@ -23,17 +20,19 @@
 
   const fightPreview = $derived(
     invader?.active
-      ? previewFight(invader, fightColonists, avgFighterStrength, fightWeapons, fightArmor)
+      ? previewFight(invader, fightColonists, avgFighterStrength)
       : null
   )
 
   const canFight = $derived(
     invader?.active &&
     fightColonists > 0 &&
-    fightColonists <= (unassigned?.count ?? 0) &&
-    fightWeapons <= (gear?.weapons ?? 0) &&
-    fightArmor <= (gear?.armor ?? 0)
+    fightColonists <= (unassigned?.count ?? 0)
   )
+
+  const rawDmg = $derived(invader?.active ? Math.floor((invader.strength ?? 0) / 10) + 1 : 0)
+  const defAbsorb = $derived(Math.min(Math.floor(rawDmg / 2) + 1, resources?.defense ?? 0))
+  const netDmg = $derived(Math.max(0, rawDmg - defAbsorb))
 </script>
 
 {#if invader?.active}
@@ -65,45 +64,27 @@
     <div class="attack-warning" class:critical={invader.epochsUntilAttack <= 1}>
       <p class="attack-message">
         {#if invader.epochsUntilAttack === 0}
-          ⚠️ ATTACK IMMINENT! Will kill {invader.strength} colonists this epoch!
+          ⚠️ ATTACK IMMINENT! ~{netDmg} casualties this epoch!
         {:else if invader.epochsUntilAttack === 1}
-          ⚠️ Invaders attack next epoch! Will kill {invader.strength} colonists!
+          ⚠️ Attack next epoch! ~{netDmg} casualties expected!
         {:else}
-          Invaders will attack in {invader.epochsUntilAttack} epochs, killing {invader.strength} colonists
+          Attacks in {invader.epochsUntilAttack} epochs — ~{netDmg} casualties/attack
         {/if}
       </p>
       {#if cannonDamageRate > 0}
-        <p class="cannon-hint">Cannons reduce strength by {cannonDamageRate} per epoch</p>
+        <p class="cannon-hint">Cannons reduce strength by {cannonDamageRate}/ep</p>
       {/if}
     </div>
 
     <div class="fight-setup">
       <div class="fight-row">
         <span class="fight-label">
-          Colonists <span class="str-hint">(str {avgFighterStrength})</span>
+          Colonists <span class="str-hint">(str {avgFighterStrength} each)</span>
         </span>
         <div class="fight-ctrl">
           <button class="adj" onclick={() => fightColonists = Math.max(1, fightColonists - 1)} disabled={disabled}>-</button>
           <span class="wcount">{fightColonists}/{unassigned?.count ?? 0}</span>
           <button class="adj" onclick={() => fightColonists = Math.min(unassigned?.count ?? 0, fightColonists + 1)} disabled={disabled}>+</button>
-        </div>
-      </div>
-      
-      <div class="fight-row">
-        <span class="fight-label">Weapons (+{WEAPON_POWER} ea)</span>
-        <div class="fight-ctrl">
-          <button class="adj" onclick={() => fightWeapons = Math.max(0, fightWeapons - 1)} disabled={disabled}>-</button>
-          <span class="wcount">{fightWeapons}/{gear?.weapons ?? 0}</span>
-          <button class="adj" onclick={() => fightWeapons = Math.min(gear?.weapons ?? 0, fightWeapons + 1)} disabled={disabled}>+</button>
-        </div>
-      </div>
-      
-      <div class="fight-row">
-        <span class="fight-label">Armor (+{ARMOR_POWER} ea)</span>
-        <div class="fight-ctrl">
-          <button class="adj" onclick={() => fightArmor = Math.max(0, fightArmor - 1)} disabled={disabled}>-</button>
-          <span class="wcount">{fightArmor}/{gear?.armor ?? 0}</span>
-          <button class="adj" onclick={() => fightArmor = Math.min(gear?.armor ?? 0, fightArmor + 1)} disabled={disabled}>+</button>
         </div>
       </div>
     </div>
@@ -118,7 +99,7 @@
       </div>
     {/if}
 
-    <button class="fight-btn" onclick={() => onfight?.(fightColonists, fightWeapons, fightArmor)}
+    <button class="fight-btn" onclick={() => onfight?.(fightColonists)}
       disabled={!canFight || disabled}>
       {disabled ? 'Fighting…' : 'Send Fighters'}
     </button>

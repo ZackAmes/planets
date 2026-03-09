@@ -9,7 +9,7 @@
       <li><strong>Workers Required:</strong> Buildings need assigned workers to produce!</li>
       <li><strong>Epoch = 2 minutes:</strong> Resources generate every 2 minutes</li>
       <li><strong>Click Buildings:</strong> Select on planet to assign/remove workers</li>
-      <li><strong>Water = Life:</strong> Each colonist needs 1 water per epoch or they die</li>
+      <li><strong>Water = Life:</strong> Each colonist needs 10 water per epoch or they die</li>
       <li><strong>Houses = Growth:</strong> Only way to increase population</li>
       <li><strong>Resources = Danger:</strong> High stored resources attract invaders</li>
     </ul>

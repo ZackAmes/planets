@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x381899226c066a0262f45d6ab815f89818e0874ec3e66cdf72b5e92d8db4680",
-    "address": "0x64cde5098f3f2a55e64d267cbce0a8257232603f2e645346db14cf2cee4bfe0",
-    "seed": "planets_sepolia_v8",
+    "address": "0x7b36cad51cb22e147156176369b09714c6640aad3e43306b0d286e32de3af71",
+    "seed": "planets_sepolia_v9",
     "name": "Starnet",
     "entrypoints": [
       "uuid",
@@ -1485,8 +1485,8 @@
   },
   "contracts": [
     {
-      "address": "0x36e5a52a1b0b93820661b30a1e508efaf51039ef20f575f1c41ebecd0b7fe34",
-      "class_hash": "0x31dfbb8035d454a4d285b0488f8db56d1ce36aa88079f34c628b68a4c86a215",
+      "address": "0x11f53dfa81ca87e069a9d7f22cb40e198505b7df96c7c6387b37ed2b8710c89",
+      "class_hash": "0x4de2f2bd6c9d1858c2a90e6e28dd853322432f9eb6763e14c92f19b2e2f152e",
       "abi": [
         {
           "type": "impl",
@@ -1703,26 +1703,6 @@
             },
             {
               "type": "function",
-              "name": "craft_gear",
-              "inputs": [
-                {
-                  "name": "planet_id",
-                  "type": "core::felt252"
-                },
-                {
-                  "name": "weapons",
-                  "type": "core::integer::u32"
-                },
-                {
-                  "name": "armor",
-                  "type": "core::integer::u32"
-                }
-              ],
-              "outputs": [],
-              "state_mutability": "external"
-            },
-            {
-              "type": "function",
               "name": "fight_invader",
               "inputs": [
                 {
@@ -1732,14 +1712,6 @@
                 {
                   "name": "colonists",
                   "type": "core::integer::u8"
-                },
-                {
-                  "name": "weapons",
-                  "type": "core::integer::u32"
-                },
-                {
-                  "name": "armor",
-                  "type": "core::integer::u32"
                 }
               ],
               "outputs": [],
@@ -1872,14 +1844,13 @@
         "collect",
         "upgrade_tc",
         "upgrade_building",
-        "craft_gear",
         "fight_invader",
         "upgrade"
       ]
     },
     {
-      "address": "0x1b180d2ac84f2cdc4d3d26d3d2c101061c8f4150ace28a208fc6a4f01f77b87",
-      "class_hash": "0x402f7725d7b5576367a3ead1690d2d9d6ad6f28a17d32fdfee08ad912ff6625",
+      "address": "0x7b7003b8a223f5b9aa79c0ccd8779d7aeb7d6a07973d9a932cd61f6e957204f",
+      "class_hash": "0x62c0547e3cda631d44eb8582641b46cfa51dadd9e944bb18d74321de3e2947d",
       "abi": [
         {
           "type": "impl",
@@ -2698,8 +2669,8 @@
       ]
     },
     {
-      "address": "0x10cfdab10b30062b235f8370d6d0a5e7de634fedb8549d7783a5a417db2573",
-      "class_hash": "0xfb2db541252b7099f78d5b66daf874876333563661418c2eb9dfc385932ce0",
+      "address": "0x4863dd511de55746df2cb904d8d962552cad91821ae3ce05a6be56162b60081",
+      "class_hash": "0x6a38d9f76f4dc710c9c5f919fa7da21e417dfc831783b2eb03999497d06b929",
       "abi": [
         {
           "type": "impl",
@@ -2866,6 +2837,10 @@
             {
               "name": "tc_level",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "founded_at",
+              "type": "core::integer::u64"
             }
           ]
         },
@@ -3365,8 +3340,8 @@
       ]
     },
     {
-      "address": "0x6ebe2d8b2acdc2a986a61b3491e6a5437ed3796c28f282e34ca7b34abb20110",
-      "class_hash": "0x131c2ba125f947b1330a9ed3a048c59a3c41220b6066ca8afb5fed2042c4953",
+      "address": "0x6e5642fba96a975f7251736ded80d8b3710f286e97aa7f99470ae316eac5ba6",
+      "class_hash": "0x5d51d464974d09e955dad90b14d16e3602e44096e0f99af92d566218d4e1f46",
       "abi": [
         {
           "type": "impl",
@@ -7733,9 +7708,14 @@
           "name": "tc_level",
           "type": "core::integer::u8",
           "key": false
+        },
+        {
+          "name": "founded_at",
+          "type": "core::integer::u64",
+          "key": false
         }
       ],
-      "class_hash": "0xd708bc6233248850f2fb3c8a486585c82c1e3ce5edac9cb58c1add5905a4d3",
+      "class_hash": "0x6f5ec184689c22932784f8772bda9a2c2caac78709c7a76f7b8967bc4812a25",
       "tag": "planets-Colony",
       "selector": "0x1d836c843f08c48b569e81de69ac3ae2088c792b3b443c537364d27e86e46b7",
       "abi": [
@@ -7776,6 +7756,10 @@
             {
               "name": "tc_level",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "founded_at",
+              "type": "core::integer::u64"
             }
           ]
         },
@@ -7810,6 +7794,10 @@
             {
               "name": "tc_level",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "founded_at",
+              "type": "core::integer::u64"
             }
           ]
         },

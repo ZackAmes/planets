@@ -99,7 +99,7 @@
       tips.push({
         id: 'workshop_unlock',
         title: 'Workshop Available',
-        message: 'You can now build a Workshop! It unlocks gear crafting, which is essential for fighting invaders.',
+        message: 'You can now build a Workshop! It provides a passive defense bonus to help protect your colony.',
         type: 'tip'
       })
     }
@@ -108,7 +108,7 @@
       tips.push({
         id: 'danger_warning',
         title: '⚠️ Danger Rising',
-        message: 'Having more stored resources increases danger! Build Cannons for defense or spend resources quickly. Each epoch has a chance to spawn invaders.',
+        message: 'Invaders will arrive soon! Build Cannons and stockpile defense resources. When they arrive, send colonists to fight or let cannons wear them down.',
         type: 'warning'
       })
     }
@@ -117,7 +117,7 @@
       tips.push({
         id: 'invader_help',
         title: 'Under Attack!',
-        message: 'Invaders drain your defense each epoch. Fight them off with colonists + gear, or let Cannons wear them down. If defense hits zero, colonists start dying!',
+        message: 'Invaders attack periodically! Your defense absorbs some damage each attack. Fight them off with unassigned colonists, or let Cannons wear down their strength over time.',
         type: 'warning'
       })
     }
@@ -237,7 +237,7 @@
       return {
         id: 'workshop_unlock',
         title: 'Workshop Available',
-        message: 'You can now build a Workshop! It unlocks gear crafting, which is essential for fighting invaders.',
+        message: 'You can now build a Workshop! It provides a passive defense bonus to help protect your colony.',
         type: 'tip'
       }
     }
@@ -246,7 +246,7 @@
       return {
         id: 'danger_warning',
         title: '⚠️ Danger Rising',
-        message: 'Having more stored resources increases danger! Build Cannons for defense or spend resources quickly. Each epoch has a chance to spawn invaders.',
+        message: 'Invaders will arrive soon! Build Cannons and stockpile defense resources. When they arrive, send colonists to fight or let cannons wear them down.',
         type: 'warning'
       }
     }
@@ -255,7 +255,7 @@
       return {
         id: 'invader_help',
         title: 'Under Attack!',
-        message: 'Invaders drain your defense each epoch. Fight them off with colonists + gear, or let Cannons wear them down. If defense hits zero, colonists start dying!',
+        message: 'Invaders attack periodically! Your defense absorbs some damage each attack. Fight them off with unassigned colonists, or let Cannons wear down their strength over time.',
         type: 'warning'
       }
     }

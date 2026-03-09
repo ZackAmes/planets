@@ -3,13 +3,14 @@
   import { HTML } from '@threlte/extras'
   import * as THREE from 'three'
   import { generatePlanetTexture } from '../lib/planetGen.js'
-  import { PLANET_WIDTH, PLANET_HEIGHT, lonLatToLocal, uvToLonLat, BUILDING_INFO } from '../lib/gameLogic.js'
+  import { lonLatToLocal, uvToLonLat, snapToHexCenter, BUILDING_INFO } from '../lib/gameLogic.js'
 
   let {
     seed = 42,
     seedFull = null,          // BigInt felt252 — authoritative Poseidon terrain seed
     canPick = false,          // colony founding mode
     canBuild = false,         // building placement mode
+    pendingBuildSite = null,  // { lon, lat } selected build tile
     colonyMarker = null,      // [x,y,z] in local sphere space
     buildings = [],           // [{ lon, lat, buildingType }]
     invader = null,           // { active, lon, lat } | null
@@ -19,15 +20,25 @@
     onbuildingclick = null,   // (lon, lat) => void
   } = $props()
 
-  // Capture seeds once at mount — texture is static for the lifetime of this component.
-  // A new seed requires remounting (key={seed} on the parent Canvas).
-  const initialSeed     = seed
-  const initialSeedFull = seedFull
-  const canvas = generatePlanetTexture(initialSeed, initialSeedFull)
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
+  function createPlanetTexture(nextSeed, nextSeedFull) {
+    const canvas = generatePlanetTexture(nextSeed, nextSeedFull)
+    const nextTexture = new THREE.CanvasTexture(canvas)
+    nextTexture.colorSpace = THREE.SRGBColorSpace
+    // Keep texture V orientation identical to event.uv coordinates.
+    nextTexture.flipY = false
+    return nextTexture
+  }
+
+  // Keep texture in sync with authoritative seed values.
+  let texture = $state(null)
+  $effect(() => {
+    const nextTexture = createPlanetTexture(seed, seedFull)
+    texture = nextTexture
+    return () => nextTexture.dispose()
+  })
 
   let mesh = $state(null)
+  let hoveredTile = $state(null) // { col, row, lon, lat } - tile being hovered in build mode
 
   useTask((delta) => {
     // Pause rotation while the player is picking a location or placing a building
@@ -36,24 +47,42 @@
 
   function handleClick(event) {
     if (!mesh) return
+    // Use the already-snapped hovered tile when available so click and hover
+    // always resolve to the same tile at boundaries.
+    const snappedFromHover = hoveredTile
     const uv = event.uv
-    if (!uv) return
-
-    const localPoint = mesh.worldToLocal(event.point.clone()).normalize().multiplyScalar(8.15)
-    const localPos = [localPoint.x, localPoint.y, localPoint.z]
-    const { lon, lat } = uvToLonLat(uv.x, uv.y)
-
-    // Only trigger build placement on terrain clicks (not building clicks)
+    if (!snappedFromHover && !uv) return
+    const { lon, lat } = snappedFromHover ?? uvToLonLat(uv.x, uv.y)
+    // Build + founding both snap to the same tile grid.
     if (canBuild && onbuildpick) {
-      onbuildpick(lon, lat, localPos)
+      const snapped = snappedFromHover ?? snapToHexCenter(lon, lat)
+      const snappedLocalPos = lonLatToLocal(snapped.lon, snapped.lat, 8.15)
+      onbuildpick(snapped.lon, snapped.lat, snappedLocalPos)
       return
     }
 
+    // Snap to tile center for colony founding
     if (canPick && onlocationpick) {
-      const col = Math.min(PLANET_WIDTH - 1, Math.floor(uv.x * PLANET_WIDTH))
-      const row = Math.min(PLANET_HEIGHT - 1, Math.floor((1 - uv.y) * PLANET_HEIGHT))
-      onlocationpick(col, row, lon, lat, localPos)
+      const snapped = snappedFromHover ?? snapToHexCenter(lon, lat)
+      const snappedLocalPos = lonLatToLocal(snapped.lon, snapped.lat, 8.15)
+      onlocationpick(snapped.col, snapped.row, snapped.lon, snapped.lat, snappedLocalPos)
     }
+  }
+
+  function handleMouseMove(event) {
+    if ((!canBuild && !canPick) || !mesh) {
+      hoveredTile = null
+      return
+    }
+
+    const uv = event.uv
+    if (!uv) {
+      hoveredTile = null
+      return
+    }
+
+    const { lon, lat } = uvToLonLat(uv.x, uv.y)
+    hoveredTile = snapToHexCenter(lon, lat)
   }
 
   // Precompute building marker positions in local sphere space
@@ -81,6 +110,13 @@
   const invaderPos = $derived(
     invader?.active ? lonLatToLocal(invader.lon, invader.lat, 8.15) : null
   )
+
+  // Tile highlight position for build mode
+  const tileHighlightPos = $derived(
+    canBuild && pendingBuildSite
+      ? (pendingBuildSite.localPos ?? lonLatToLocal(pendingBuildSite.lon, pendingBuildSite.lat, 8.15))
+      : (hoveredTile ? lonLatToLocal(hoveredTile.lon, hoveredTile.lat, 8.15) : null)
+  )
 </script>
 
 <!-- Main planet sphere -->
@@ -89,6 +125,7 @@
   receiveShadow
   castShadow
   onclick={handleClick}
+  onpointermove={handleMouseMove}
 >
   <T.SphereGeometry args={[8, 128, 64]} />
   <T.MeshStandardMaterial map={texture} roughness={0.85} metalness={0.05} />
@@ -144,6 +181,21 @@
         emissive="#ff0000"
         emissiveIntensity={1.4}
         roughness={0.2}
+      />
+    </T.Mesh>
+  {/if}
+
+  <!-- Tile highlight for build mode or colony founding -->
+  {#if tileHighlightPos && (canBuild || canPick)}
+    <T.Mesh position={tileHighlightPos}>
+      <T.SphereGeometry args={[0.22, 12, 12]} />
+      <T.MeshStandardMaterial
+        color={canPick ? "#ff8844" : "#66ff88"}
+        emissive={canPick ? "#ff6622" : "#44ff66"}
+        emissiveIntensity={0.8}
+        roughness={0.3}
+        transparent
+        opacity={0.6}
       />
     </T.Mesh>
   {/if}

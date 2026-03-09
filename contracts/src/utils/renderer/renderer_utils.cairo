@@ -2,9 +2,11 @@
 
 use planets::models::planet::Planet;
 use planets::models::building::Building;
+use planets::models::colony::Colony;
+use planets::models::resources::Resources;
+use planets::models::invader::Invader;
 use planets::utils::renderer::encoding::{U256BytesUsedTraitImpl, bytes_base64_encode};
 use planets::libs::terrain::terrain_at;
-use game_components_interfaces::GameDetail;
 use graffiti::json::JsonImpl;
 
 // ---------------------------------------------------------------------------
@@ -12,12 +14,20 @@ use graffiti::json::JsonImpl;
 // ---------------------------------------------------------------------------
 
 pub fn create_metadata(
-    planet_id: felt252, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+    planet_id: felt252,
+    planet: Planet,
+    planet_name: felt252,
+    buildings: Span<Building>,
+    colony: Colony,
+    resources: Resources,
+    invader: Invader,
 ) -> ByteArray {
     let pop = planet.population;
     let seed_val = planet.seed;
 
-    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id, buildings);
+    let svg = _build_rotating_planet_svg(
+        planet, planet_name, planet_id, buildings, colony, resources, invader,
+    );
     let base64_image = format!("data:image/svg+xml;base64,{}", bytes_base64_encode(svg));
 
     let _id = format!("{}", planet_id);
@@ -49,19 +59,18 @@ pub fn create_metadata(
 }
 
 pub fn generate_svg(
-    planet_id: felt252, planet: Planet, planet_name: felt252, buildings: Span<Building>,
+    planet_id: felt252,
+    planet: Planet,
+    planet_name: felt252,
+    buildings: Span<Building>,
+    colony: Colony,
+    resources: Resources,
+    invader: Invader,
 ) -> ByteArray {
-    let svg = _build_rotating_planet_svg(planet, planet_name, planet_id, buildings);
+    let svg = _build_rotating_planet_svg(
+        planet, planet_name, planet_id, buildings, colony, resources, invader,
+    );
     format!("data:image/svg+xml;base64,{}", bytes_base64_encode(svg))
-}
-
-pub fn generate_details(planet: Planet) -> Span<GameDetail> {
-    array![
-        GameDetail { name: 'Population', value: planet.population.into() },
-        GameDetail { name: 'Turns', value: planet.action_count.into() },
-        GameDetail { name: 'Seed', value: planet.seed },
-    ]
-        .span()
 }
 
 // ---------------------------------------------------------------------------
@@ -73,11 +82,36 @@ fn _build_rotating_planet_svg(
     planet_name: felt252,
     planet_id: felt252,
     buildings: Span<Building>,
+    colony: Colony,
+    resources: Resources,
+    invader: Invader,
 ) -> ByteArray {
     let _name = _felt_to_ba(planet_name);
     let _id = format!("{}", planet_id);
     let _pop = format!("{}", planet.population);
-    let _turns = format!("{}", planet.action_count);
+    // Age in epochs since founding
+    let age_epochs: u64 = if resources.last_updated_at > colony.founded_at {
+        (resources.last_updated_at - colony.founded_at) / 120
+    } else {
+        0
+    };
+    let _turns = format!("{}", age_epochs);
+    let tc_level_u32: u32 = colony.tc_level.into();
+    let _pop_cap = format!("{}", tc_level_u32 * 10_u32);
+    let _tc = format!("{}", tc_level_u32);
+    let _water = format!("{}", resources.water);
+    let _iron = format!("{}", resources.iron);
+    let _def = format!("{}", resources.defense);
+    let _uran = format!("{}", resources.uranium);
+
+    let invader_bar: ByteArray = if invader.active {
+        "<text x='300' y='16' text-anchor='middle' fill='#ff4444' "
+            + "font-size='11' font-family='monospace' font-weight='bold' letter-spacing='2'>"
+            + "!! INVADER APPROACHING !!"
+            + "</text>"
+    } else {
+        ""
+    };
 
     let strips = _build_terrain_grid(planet.seed);
     let building_markers = _build_building_markers(buildings);
@@ -115,15 +149,31 @@ fn _build_rotating_planet_svg(
         + "<circle cx='300' cy='300' r='272' fill='none' stroke='#2a5a90' stroke-width='1.5' opacity='0.06'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#lit)'/>"
         + "<circle cx='300' cy='300' r='255' fill='url(#shad)'/>"
-        + "<text x='300' y='578' text-anchor='middle' fill='#6ab4ff' "
-        + "font-size='18' font-family='monospace' letter-spacing='2'>"
+        + invader_bar
+        + "<text x='300' y='566' text-anchor='middle' fill='#6ab4ff' "
+        + "font-size='17' font-family='monospace' letter-spacing='2'>"
         + _name
         + "</text>"
-        + "<text x='300' y='594' text-anchor='middle' fill='#33506a' "
-        + "font-size='11' font-family='monospace'>pop "
+        + "<text x='300' y='580' text-anchor='middle' fill='#44cc88' "
+        + "font-size='10' font-family='monospace'>pop "
         + _pop
-        + "  |  turn "
+        + "/"
+        + _pop_cap
+        + "  TC:"
+        + _tc
+        + "  age:"
         + _turns
+        + "ep"
+        + "</text>"
+        + "<text x='300' y='594' text-anchor='middle' fill='#4a7a99' "
+        + "font-size='10' font-family='monospace'>water:"
+        + _water
+        + "  iron:"
+        + _iron
+        + "  def:"
+        + _def
+        + "  uran:"
+        + _uran
         + "</text>"
         + "<text x='300' y='22' text-anchor='middle' fill='#3a5570' "
         + "font-size='12' font-family='monospace' letter-spacing='1'>PLANET #"
@@ -243,31 +293,30 @@ fn _build_building_markers(buildings: Span<Building>) -> ByteArray {
 // ---------------------------------------------------------------------------
 // Terrain grid generation
 //
-// Renders a 20-column x 10-row grid of terrain cells, each 30x60 px.
+// Renders a 40-column x 20-row grid of terrain cells, each 15x30 px.
 // The grid is duplicated (columns rendered at x and x+600) so the
 // animateTransform scroll from 0 to -600 loops seamlessly.
 //
-// We keep 20x10 visually (400 rects) to keep the SVG compact, but sample
-// via terrain_at() so the colors match the authoritative 80x40 game grid.
+// 40x20 = 800 cells (x2 = 1600 rects) matching the 50x40 game grid.
 // ---------------------------------------------------------------------------
 
 fn _build_terrain_grid(seed: felt252) -> ByteArray {
     let mut result: ByteArray = "";
     let mut i: u32 = 0;
     loop {
-        if i >= 200 {
+        if i >= 800 {
             break;
         }
-        let col: u32 = i / 10;
-        let row: u32 = i % 10;
+        let col: u32 = i / 20;
+        let row: u32 = i % 20;
 
-        let x: u32 = col * 30;
-        let y: u32 = row * 60;
+        let x: u32 = col * 15;
+        let y: u32 = row * 30;
         let x2: u32 = x + 600;
 
-        // Sample at center of this SVG cell — terrain_at uses the 80x40 game grid internally
-        let lon: u16 = (col * 180 + 90).try_into().unwrap_or(0);
-        let lat: u16 = (row * 180 + 90).try_into().unwrap_or(0);
+        // Sample at center of this SVG cell (each SVG cell = 90 lon x 90 lat units)
+        let lon: u16 = (col * 90 + 45).try_into().unwrap_or(0);
+        let lat: u16 = (row * 90 + 45).try_into().unwrap_or(0);
         let terrain_type = terrain_at(seed, lon, lat);
         let color = _terrain_color(terrain_type);
 
@@ -279,14 +328,14 @@ fn _build_terrain_grid(seed: felt252) -> ByteArray {
             + xs
             + "' y='"
             + ys.clone()
-            + "' width='30' height='60' fill='"
+            + "' width='15' height='30' fill='"
             + color.clone()
             + "'/>";
         result += "<rect x='"
             + x2s
             + "' y='"
             + ys
-            + "' width='30' height='60' fill='"
+            + "' width='15' height='30' fill='"
             + color
             + "'/>";
 

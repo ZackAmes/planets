@@ -206,7 +206,13 @@ function parsePlanet(p, planetId) {
 
 function parseColony(c) {
   if (!c || !c.founded) return null
-  return { col: Number(c.col), row: Number(c.row), founded: true, tcLevel: Number(c.tc_level) }
+  return {
+    col: Number(c.col),
+    row: Number(c.row),
+    founded: true,
+    tcLevel: Number(c.tc_level),
+    foundedAt: Number(BigInt(c.founded_at ?? 0)),
+  }
 }
 
 function parseResources(r) {

@@ -9,6 +9,7 @@ pub trait IGameTokenSystems<T> {
 mod game_token_systems {
     use planets::constants::world::DEFAULT_NS;
     use planets::models::planet::Planet;
+    use planets::models::building::{Building, PlanetBuildingCount, PlanetBuildingEntry};
     use dojo::model::ModelStorage;
     use dojo::world::WorldStorageTrait;
     use game_components_embeddable_game_standard::minigame::minigame_component::MinigameComponent;
@@ -96,7 +97,20 @@ mod game_token_systems {
         fn game_over(self: @ContractState, token_id: felt252) -> bool {
             let world = self.world(@DEFAULT_NS());
             let planet: Planet = world.read_model(token_id);
-            planet.action_count > 0 && planet.population == 0
+            // Lose: colony wiped out
+            if planet.action_count > 0 && planet.population == 0 { return true; }
+            // Win: Spaceport (building_type 6) constructed
+            let bcount: PlanetBuildingCount = world.read_model(token_id);
+            let mut i: u32 = 0;
+            let mut found = false;
+            loop {
+                if i >= bcount.count { break; }
+                let entry: PlanetBuildingEntry = world.read_model((token_id, i));
+                let b: Building = world.read_model((token_id, entry.lon, entry.lat));
+                if b.building_type == 6 { found = true; break; }
+                i += 1;
+            };
+            found
         }
 
         fn score_batch(self: @ContractState, token_ids: Span<felt252>) -> Array<u64> {
@@ -157,7 +171,7 @@ mod game_token_systems {
             let planet: Planet = world.read_model(token_id);
             array![
                 GameDetail { name: 'Population', value: planet.population.into() },
-                GameDetail { name: 'Turns', value: planet.action_count.into() },
+                GameDetail { name: 'Age (epochs)', value: planet.action_count.into() },
             ]
                 .span()
         }

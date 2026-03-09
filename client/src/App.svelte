@@ -7,16 +7,15 @@
   import ColonistsPanel from './components/ColonistsPanel.svelte'
   import BuildingsPanel from './components/BuildingsPanel.svelte'
   import ListsPanel from './components/ListsPanel.svelte'
-  import GearPanel from './components/GearPanel.svelte'
   import InvaderPanel from './components/InvaderPanel.svelte'
   import BuildPanel from './components/BuildPanel.svelte'
   import DangerWidget from './components/DangerWidget.svelte'
   import TutorialTip from './components/TutorialTip.svelte'
   import { connect, disconnect, subscribe } from './lib/controller.js'
-  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, upgradeBuilding, craftGear, fightInvader, waitForTx } from './lib/onchain.js'
+  import { mintGame, spawnPlanet, foundColony, constructBuilding, assignWorkers, collect, upgradeTc, upgradeBuilding, fightInvader, waitForTx } from './lib/onchain.js'
   import { fetchDenshokanPlanets, fetchPlanet, fetchColony, fetchFullState } from './lib/contracts.js'
   import { getProvider } from './lib/contracts.js'
-  import { terrainAt, terrainName, computeRates, computeThreat, attackProbability, EPOCH_SECONDS } from './lib/gameLogic.js'
+  import { terrainAt, computeRates, computeThreat, attackProbability, EPOCH_SECONDS } from './lib/gameLogic.js'
 
   // ---------------------------------------------------------------------------
   // Wallet state
@@ -50,7 +49,6 @@
   let confirmedMarker        = $state(null)  // [x, y, z]
 
   let invader  = $state(null) // { active, strength, lon, lat, spawnedAt }
-  let gear     = $state(null) // { weapons, armor }
 
   let buildings        = $state([])
   let buildMode        = $state(false)
@@ -103,32 +101,47 @@
     }
   }
 
+  function isPlanetFinished(s) {
+    if (!s) return false
+    const isDead = s.planet.population === 0 && s.planet.actionCount > 0
+    const hasSpaceport = s.buildings.some(b => b.buildingType === 6)
+    return isDead || hasSpaceport
+  }
+
   async function restoreState(playerAddress) {
     const ids = await fetchDenshokanPlanets(playerAddress)
     if (ids.length === 0) { phase = 'mint'; return }
 
-    const id = ids[ids.length - 1]
-    planetId = id
+    // Scan newest-first for an active (unfinished) planet
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const id = ids[i]
+      const s = await fetchFullState(id)
+      if (!s) {
+        // Not yet spawned — offer spawn
+        planetId = id
+        phase = 'spawn'
+        return
+      }
+      if (isPlanetFinished(s)) continue
 
-    const s = await fetchFullState(id)
-    if (!s) { phase = 'spawn'; return }
+      // Found an active planet
+      planetId = id
+      planetName = s.planet.name
+      setPlanetState(s.planet)
+      if (!s.colony) { phase = 'founding'; return }
+      colony     = s.colony
+      resources  = s.resources
+      assigned   = s.assigned
+      unassigned = s.unassigned
+      buildings  = s.buildings
+      invader    = s.invader
+      confirmedMarker = null
+      phase = 'managing'
+      return
+    }
 
-    planetName = s.planet.name
-    setPlanetState(s.planet)
-
-    if (s.planet.population === 0 && s.planet.actionCount > 0) { phase = 'gameover'; return }
-
-    if (!s.colony) { phase = 'founding'; return }
-
-    colony     = s.colony
-    resources  = s.resources
-    assigned   = s.assigned
-    unassigned = s.unassigned
-    buildings  = s.buildings
-    invader    = s.invader
-    gear       = s.gear
-    confirmedMarker = null
-    phase = buildings.some(b => b.buildingType === 6) ? 'won' : 'managing'
+    // All planets are finished — let them mint a fresh one
+    phase = 'mint'
   }
 
   async function refreshColonyState(id) {
@@ -142,7 +155,6 @@
     unassigned = s.unassigned
     buildings  = s.buildings
     invader    = s.invader
-    gear       = s.gear
   }
 
   async function handleManualRefresh() {
@@ -162,7 +174,14 @@
     await disconnect()
     phase = 'connect'; planetId = null; planetName = ''; planet = null
     colony = null; resources = null; assigned = null; unassigned = null
-    invader = null; gear = null; confirmedMarker = null; buildings = []
+    invader = null; confirmedMarker = null; buildings = []
+  }
+
+  function handleNewPlanet() {
+    planetId = null; planetName = ''; planet = null
+    colony = null; resources = null; assigned = null; unassigned = null
+    invader = null; confirmedMarker = null; buildings = []
+    phase = 'mint'
   }
 
   // ---------------------------------------------------------------------------
@@ -334,7 +353,14 @@
       await refreshColonyState(planetId)
       selectedBuildType = null
       pendingBuildSite = null
-      if (type === 6) phase = 'won'
+      if (type === 6) {
+        // Final collect to lock end state on-chain before showing won screen
+        try {
+          await collect(account, planetId)
+          await refreshColonyState(planetId)
+        } catch (_) { /* ignore if it fails */ }
+        phase = 'won'
+      }
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
@@ -390,30 +416,14 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Craft gear
-  // ---------------------------------------------------------------------------
-  async function handleCraftGear(weapons, armor) {
-    if (!account) return
-    txPending = true
-    txStatus = 'Crafting gear...'
-    try {
-      await craftGear(account, planetId, weapons, armor)
-      await refreshColonyState(planetId)
-      txStatus = ''
-    } catch (e) {
-      txStatus = 'Error: ' + (e.message ?? String(e))
-    } finally { txPending = false }
-  }
-
-  // ---------------------------------------------------------------------------
   // Fight invader
   // ---------------------------------------------------------------------------
-  async function handleFightInvader(colonists, weapons, armor) {
+  async function handleFightInvader(colonists) {
     if (!account) return
     txPending = true
     txStatus = 'Sending fighters...'
     try {
-      await fightInvader(account, planetId, colonists, weapons, armor)
+      await fightInvader(account, planetId, colonists)
       await refreshColonyState(planetId)
       if (planet?.population === 0) phase = 'gameover'
       txStatus = ''
@@ -494,14 +504,19 @@
   
   // Calculate time since colony founding
   const timeSinceFounding = $derived.by(() => {
-    if (!planet?.spawnedAt) return '--:--:--'
-    const elapsed = nowSeconds - planet.spawnedAt
+    if (!colony?.foundedAt) return '--:--:--'
+    const elapsed = nowSeconds - colony.foundedAt
     const hours = Math.floor(elapsed / 3600)
     const minutes = Math.floor((elapsed % 3600) / 60)
     const seconds = elapsed % 60
     return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
   })
   
+  const colonyAgeEpochs = $derived.by(() => {
+    if (!colony?.foundedAt || !resources?.lastUpdatedAt) return 0
+    return Math.floor((resources.lastUpdatedAt - colony.foundedAt) / EPOCH_SECONDS)
+  })
+
   const hasWorkshop = $derived(buildings.some(b => b.buildingType === 7))
   const populationAtCap = $derived(
     planet && (planet.population >= tcLevel * 10)
@@ -518,6 +533,7 @@
       seedFull={planet?.seedFull ?? null}
       canPick={phase === 'founding' && !txPending}
       canBuild={phase === 'managing' && buildMode && !txPending}
+      pendingBuildSite={pendingBuildSite}
       colonyMarker={phase === 'managing' || phase === 'gameover'
         ? confirmedMarker
         : pendingMarker}
@@ -530,11 +546,20 @@
     />
   </Canvas>
 
+  <a class="github-btn" href="https://github.com/ZackAmes/planets" target="_blank" rel="noopener" title="View on GitHub">
+    <svg class="github-icon" viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/>
+    </svg>
+  </a>
+
   <div class="ui">
     <div class="header">
       <span class="planet-label">PLANETS</span>
       {#if planetName && (phase === 'managing' || phase === 'founding' || phase === 'won' || phase === 'gameover')}
         <span class="planet-name-hdr">{planetName}</span>
+      {/if}
+      {#if planetId != null && (phase === 'managing' || phase === 'founding' || phase === 'won' || phase === 'gameover')}
+        <a class="btn-sm voyager-link" href="https://sepolia.voyager.online/nft/0x0142712722e62a38f9c40fcc904610e1a14c70125876ecaaf25d803556734467/{planetId}" target="_blank" rel="noopener" title="View NFT on Voyager">NFT</a>
       {/if}
       {#if address}
         <span class="addr">{address.slice(0, 6)}…{address.slice(-4)}</span>
@@ -653,22 +678,11 @@
         <InvaderPanel
           {invader}
           {unassigned}
-          {gear}
           {resources}
           cannonDamageRate={rates.cannonDamageRate}
           onfight={handleFightInvader}
           disabled={txPending}
         />
-
-        {#if selectedBuildingData?.buildingType === 7}
-          <GearPanel
-            {gear}
-            {resources}
-            {buildings}
-            oncraftgear={handleCraftGear}
-            disabled={txPending}
-          />
-        {/if}
 
         {#if !buildMode}
           <button class="build-mode-btn" onclick={handleToggleBuildMode} disabled={txPending}>
@@ -695,14 +709,22 @@
         <div class="end-panel">
           <h2 class="won-title">LAUNCHED!</h2>
           <p class="hint">Your colony has reached the stars.</p>
-          <p class="dim">Survived {planet.actionCount} turns.</p>
-          <p class="dim" style="color:#bb44ff">Population: {planet.population}</p>
+          <p class="dim">Colony age: {colonyAgeEpochs} epochs</p>
+          <p class="dim" style="color:#bb44ff">Final population: {planet.population}</p>
+          {#if planetId != null}
+            <a class="end-link voyager-end" href="https://sepolia.voyager.online/nft/0x0142712722e62a38f9c40fcc904610e1a14c70125876ecaaf25d803556734467/{planetId}" target="_blank" rel="noopener">View NFT on Voyager ↗</a>
+          {/if}
+          <button class="btn-primary" onclick={handleNewPlanet}>Start New Colony</button>
         </div>
       {:else if phase === 'gameover'}
         <div class="end-panel">
           <h2>Colony Lost</h2>
           <p class="hint">Your colonists are gone.</p>
-          <p class="dim">Survived {planet.actionCount} turns.</p>
+          <p class="dim">Colony age: {colonyAgeEpochs} epochs</p>
+          {#if planetId != null}
+            <a class="end-link voyager-end" href="https://sepolia.voyager.online/nft/0x0142712722e62a38f9c40fcc904610e1a14c70125876ecaaf25d803556734467/{planetId}" target="_blank" rel="noopener">View NFT on Voyager ↗</a>
+          {/if}
+          <button class="btn-primary" onclick={handleNewPlanet}>Start New Colony</button>
         </div>
       {/if}
     {/if}
@@ -878,6 +900,68 @@
   }
 
   .btn-sm:hover { color: #6ab4ff; border-color: #2a4a6a; }
+
+  .github-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(5, 5, 20, 0.85);
+    border: 1px solid #1a2a3a;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+    z-index: 20;
+  }
+
+  .github-btn:hover {
+    background: rgba(15, 20, 40, 0.95);
+    border-color: #2a4a6a;
+  }
+
+  .github-icon {
+    width: 18px;
+    height: 18px;
+    fill: #446688;
+    transition: fill 0.15s;
+  }
+
+  .github-btn:hover .github-icon {
+    fill: #6ab4ff;
+  }
+
+  .voyager-link {
+    text-decoration: none;
+    color: #5566aa;
+  }
+
+  .voyager-link:hover {
+    color: #8899ff;
+    border-color: #4466aa;
+  }
+
+  .end-link {
+    font-family: monospace;
+    font-size: 0.7rem;
+    text-decoration: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #2a3a5a;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .voyager-end {
+    color: #5577bb;
+  }
+
+  .voyager-end:hover {
+    color: #8899ff;
+    border-color: #4466aa;
+  }
 
   .end-panel {
     background: rgba(5, 5, 20, 0.9);

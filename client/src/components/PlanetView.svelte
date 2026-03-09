@@ -8,6 +8,7 @@
     seedFull = null,
     canPick = false,
     canBuild = false,
+    pendingBuildSite = null,
     colonyMarker = null,
     buildings = [],
     invader = null,
@@ -37,6 +38,7 @@
   {seedFull}
   {canPick}
   {canBuild}
+  {pendingBuildSite}
   {colonyMarker}
   {buildings}
   {invader}

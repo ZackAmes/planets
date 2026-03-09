@@ -101,7 +101,7 @@
             {:else if info.type === 6}
               <span class="bworkers">WIN</span>
             {:else if info.type === 7}
-              <span class="bworkers">unlocks gear</span>
+              <span class="bworkers">+defense bonus</span>
             {/if}
           </button>
         {/each}

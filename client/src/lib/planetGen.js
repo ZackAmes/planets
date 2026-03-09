@@ -23,18 +23,17 @@ const TERRAIN_RGB = {
 }
 const FALLBACK_RGB = [100, 100, 100]
 
-// Grid constants — must match terrain.cairo
-const TERRAIN_COLS = 80
+// Unified client terrain grid constants (50x40)
+const TERRAIN_COLS = 50
 const TERRAIN_ROWS = 40
-const LON_PER_COL  = 45    // 3600 / 80
+const LON_PER_COL  = 72    // 3600 / 50
 const LAT_PER_ROW  = 45    // 1800 / 40
 
 /**
  * Generates an equirectangular canvas texture for the planet sphere.
  *
- * seedFull: BigInt felt252 VRF seed — used to compute the authoritative 20x10
- *   terrain grid via the same Poseidon hash logic as the contract. The visual
- *   will exactly match the gameplay terrain.
+ * seedFull: BigInt felt252 VRF seed — used to compute deterministic terrain
+ *   on the same client grid used for selection/build preview.
  *
  * seed: JS number — used only for simplex detail noise (subtle shading within
  *   each terrain cell so the texture doesn't look like a flat pixel grid).
@@ -44,7 +43,7 @@ const LAT_PER_ROW  = 45    // 1800 / 40
 export function generatePlanetTexture(seed, seedFull = null, texWidth = 1024, texHeight = 512) {
   const effectiveSeedFull = seedFull ?? BigInt(seed)
 
-  // --- Precompute the 20x10 terrain grid (200 Poseidon calls total) ---
+  // --- Precompute the unified 50x40 terrain grid ---
   const grid = new Uint8Array(TERRAIN_COLS * TERRAIN_ROWS)
   for (let row = 0; row < TERRAIN_ROWS; row++) {
     for (let col = 0; col < TERRAIN_COLS; col++) {
@@ -69,9 +68,9 @@ export function generatePlanetTexture(seed, seedFull = null, texWidth = 1024, te
 
   for (let y = 0; y < texHeight; y++) {
     for (let x = 0; x < texWidth; x++) {
-      // Pixel → lon/lat (integer, matching terrainAt's expected range)
-      const lon = Math.floor((x / texWidth) * 3600)
-      const lat = Math.floor((1 - y / texHeight) * 1800)
+      // Pixel → lon/lat (integer), matching uvToLonLat + lonLatToLocal orientation.
+      const lon = Math.min(3599, Math.max(0, Math.floor((1 - x / texWidth) * 3600)))
+      const lat = Math.min(1799, Math.max(0, Math.floor((y / texHeight) * 1800)))
 
       // Grid cell lookup (O(1))
       const col         = Math.min(TERRAIN_COLS - 1, Math.floor(lon / LON_PER_COL))

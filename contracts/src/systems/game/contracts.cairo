@@ -14,8 +14,7 @@ pub trait IGameSystems<T> {
     fn upgrade_tc(ref self: T, planet_id: felt252);
     /// Upgrade a building to the next level. Increases output_per_worker_epoch.
     fn upgrade_building(ref self: T, planet_id: felt252, lon: u16, lat: u16);
-    fn craft_gear(ref self: T, planet_id: felt252, weapons: u32, armor: u32);
-    fn fight_invader(ref self: T, planet_id: felt252, colonists: u8, weapons: u32, armor: u32);
+    fn fight_invader(ref self: T, planet_id: felt252, colonists: u8);
 }
 
 #[dojo::contract]
@@ -73,44 +72,29 @@ mod game_systems {
     const CANNON_DEFENSE_BASE: u32 = 6;
 
     // Base output per worker per epoch (terrain-scaled at construct time)
-    const WATER_WELL_BASE: u32 = 10;
+    const WATER_WELL_BASE: u32 = 15;
     const IRON_MINE_BASE: u32 = 8;
     const URANIUM_MINE_BASE: u32 = 3;
     // Barracks has no resource output — it trains colonist strength instead
     const MAX_WORKERS: u8 = 3;
+    const WATER_PER_COLONIST_PER_EPOCH: u32 = 5;
 
-    // TC upgrade costs: iron = TC_UPGRADE_IRON_BASE * current_level
-    // Levels 3→4 and 4→5 also require uranium
+    // TC upgrade costs (max level 3): iron = TC_UPGRADE_IRON_BASE * current_level
     const TC_UPGRADE_IRON_BASE: u32 = 100;
-    const TC_UPGRADE_URANIUM_LV4: u32 = 10;  // upgrading lv3 → lv4
-    const TC_UPGRADE_URANIUM_LV5: u32 = 25;  // upgrading lv4 → lv5
 
-    // Building upgrade: iron = UPGRADE_IRON_BASE * current_level
-    // Upgrading to level 4 or 5 also costs uranium
+    // Building upgrade (max level 3): iron = UPGRADE_IRON_BASE * current_level
     const UPGRADE_IRON_BASE: u32 = 80;
-    const UPGRADE_URANIUM_LV4: u32 = 5;   // upgrading lv3 → lv4
-    const UPGRADE_URANIUM_LV5: u32 = 15;  // upgrading lv4 → lv5
 
-    // Output level factors (as % of lv1 output): lv1=100, lv2=150, lv3=220, lv4=310, lv5=420
-    // Applied as: output_lv1 * factor / 100
+    // Output level factors (as % of lv1 output): lv1=100, lv2=150, lv3=220
     const LV2_FACTOR: u32 = 150;
     const LV3_FACTOR: u32 = 220;
-    const LV4_FACTOR: u32 = 310;
-    const LV5_FACTOR: u32 = 420;
 
     // Hex grid → lon/lat (planet 50×40)
     const LON_PER_HEX: u32 = 72;
     const LAT_PER_HEX: u32 = 45;
 
-    // Gear
-    const WEAPON_COST: u32 = 20;
-    const ARMOR_COST: u32 = 30;
-    const WEAPON_POWER: u32 = 5;
-    const ARMOR_POWER: u32 = 3;
-
     // Threat check every 2 minutes (1 epoch)
     const THREAT_CHECK_INTERVAL: u64 = 120;
-    const PASSIVE_DAMAGE_DIV: u32 = 10;
 
     // Building / upgrade / training timers (seconds)
     const BUILD_TIME: u64 = 60;          // 1 min — new construction
@@ -170,7 +154,7 @@ mod game_systems {
 
             let now = get_block_timestamp();
 
-            world.write_model(@Colony { planet_id, col, row, founded: true, tc_level: 1 });
+            world.write_model(@Colony { planet_id, col, row, founded: true, tc_level: 1, founded_at: now });
             world
                 .write_model(
                     @Resources {
@@ -228,14 +212,8 @@ mod game_systems {
             assert!(bcount.count < max_buildings, "Planets: building limit reached (upgrade TC)");
 
             // Gate high-tier buildings on TC level
-            if building_type == BuildingType::Workshop {
-                assert!(colony.tc_level >= 2, "Planets: requires TC level 2");
-            }
-            if building_type == BuildingType::UraniumMine {
-                assert!(colony.tc_level >= 3, "Planets: requires TC level 3");
-            }
             if building_type == BuildingType::Spaceport {
-                assert!(colony.tc_level >= 5, "Planets: requires TC level 5");
+                assert!(colony.tc_level >= 3, "Planets: requires TC level 3");
             }
 
             assert!(lon < 3600, "Planets: lon out of range");
@@ -310,7 +288,7 @@ mod game_systems {
 
             let max_workers: u8 = match building_type {
                 BuildingType::TownCenter => 0,
-                BuildingType::WaterWell => MAX_WORKERS,
+                BuildingType::WaterWell => 1,
                 BuildingType::IronMine => MAX_WORKERS,
                 BuildingType::House => 0,
                 BuildingType::Barracks => MAX_WORKERS,
@@ -475,23 +453,14 @@ mod game_systems {
 
             let colony: Colony = world.read_model(planet_id);
             assert!(colony.founded, "Planets: no colony yet");
-            assert!(colony.tc_level < 5, "Planets: TC already at max level");
+            assert!(colony.tc_level < 3, "Planets: TC already at max level");
 
             _tick(ref world, planet_id);
 
             let iron_cost: u32 = TC_UPGRADE_IRON_BASE * colony.tc_level.into();
-            let uranium_cost: u32 = match colony.tc_level {
-                3 => TC_UPGRADE_URANIUM_LV4,
-                4 => TC_UPGRADE_URANIUM_LV5,
-                _ => 0,
-            };
 
             let mut resources: Resources = world.read_model(planet_id);
             assert!(resources.iron >= iron_cost, "Planets: insufficient iron");
-            if uranium_cost > 0 {
-                assert!(resources.uranium >= uranium_cost, "Planets: insufficient uranium");
-                resources.uranium -= uranium_cost;
-            }
             resources.iron -= iron_cost;
             world.write_model(@resources);
 
@@ -503,6 +472,7 @@ mod game_systems {
                         row: colony.row,
                         founded: colony.founded,
                         tc_level: colony.tc_level + 1,
+                        founded_at: colony.founded_at,
                     },
                 );
 
@@ -523,7 +493,7 @@ mod game_systems {
             let mut building: Building = world.read_model((planet_id, lon, lat));
             assert!(building.exists, "Planets: building not found");
             assert!(building.max_workers > 0, "Planets: cannot upgrade this building type");
-            assert!(building.level < 5, "Planets: building already at max level");
+            assert!(building.level < 3, "Planets: building already at max level");
             assert!(
                 building.completes_at == 0 || now >= building.completes_at,
                 "Planets: building is busy",
@@ -533,18 +503,9 @@ mod game_systems {
             assert!(building.level < colony.tc_level, "Planets: upgrade TC first");
 
             let iron_cost: u32 = UPGRADE_IRON_BASE * building.level.into();
-            let uranium_cost: u32 = match building.level {
-                3 => UPGRADE_URANIUM_LV4,
-                4 => UPGRADE_URANIUM_LV5,
-                _ => 0,
-            };
 
             let mut resources: Resources = world.read_model(planet_id);
             assert!(resources.iron >= iron_cost, "Planets: insufficient iron");
-            if uranium_cost > 0 {
-                assert!(resources.uranium >= uranium_cost, "Planets: insufficient uranium");
-                resources.uranium -= uranium_cost;
-            }
             resources.iron -= iron_cost;
             world.write_model(@resources);
 
@@ -566,8 +527,6 @@ mod game_systems {
             let level_factor: u32 = match new_level {
                 2 => LV2_FACTOR,
                 3 => LV3_FACTOR,
-                4 => LV4_FACTOR,
-                5 => LV5_FACTOR,
                 _ => 100,
             };
             let new_output: u32 = lv1_output * level_factor / 100;
@@ -575,12 +534,17 @@ mod game_systems {
             let upgrade_completes_at: u64 = match new_level {
                 2 => now + UPGRADE_TIME_LV2,
                 3 => now + UPGRADE_TIME_LV3,
-                4 => now + UPGRADE_TIME_LV4,
-                5 => now + UPGRADE_TIME_LV5,
                 _ => now + UPGRADE_TIME_LV2,
             };
 
             building.level = new_level;
+            if building.building_type == 1 {
+                let scaled_workers: u8 = if new_level > MAX_WORKERS { MAX_WORKERS } else { new_level };
+                building.max_workers = scaled_workers;
+                if building.workers > scaled_workers {
+                    building.workers = scaled_workers;
+                }
+            }
             building.output_per_worker_epoch = new_output;
             building.completes_at = upgrade_completes_at;
             world.write_model(@building);
@@ -588,49 +552,8 @@ mod game_systems {
             post_action(token_address, planet_id);
         }
 
-        fn craft_gear(ref self: ContractState, planet_id: felt252, weapons: u32, armor: u32) {
-            let mut world = self.world(@DEFAULT_NS());
-            let token_address = _get_token_address(world);
 
-            assert_token_ownership(token_address, planet_id);
-            pre_action(token_address, planet_id);
-
-            let colony: Colony = world.read_model(planet_id);
-            assert!(colony.founded, "Planets: no colony yet");
-            assert!(weapons + armor > 0, "Planets: nothing to craft");
-
-            // Require a Workshop to craft gear
-            let bcount_check: PlanetBuildingCount = world.read_model(planet_id);
-            let mut has_workshop = false;
-            let mut wi: u32 = 0;
-            loop {
-                if wi >= bcount_check.count { break; }
-                let wentry: PlanetBuildingEntry = world.read_model((planet_id, wi));
-                let wb: Building = world.read_model((planet_id, wentry.lon, wentry.lat));
-                if wb.building_type == 7 { has_workshop = true; break; }
-                wi += 1;
-            };
-            assert!(has_workshop, "Planets: Workshop required to craft gear");
-
-            _tick(ref world, planet_id);
-
-            let total_iron = weapons * WEAPON_COST + armor * ARMOR_COST;
-            let mut resources: Resources = world.read_model(planet_id);
-            assert!(resources.iron >= total_iron, "Planets: insufficient iron");
-            resources.iron -= total_iron;
-            world.write_model(@resources);
-
-            let mut gear: Gear = world.read_model(planet_id);
-            gear.weapons += weapons;
-            gear.armor += armor;
-            world.write_model(@gear);
-
-            post_action(token_address, planet_id);
-        }
-
-        fn fight_invader(
-            ref self: ContractState, planet_id: felt252, colonists: u8, weapons: u32, armor: u32,
-        ) {
+        fn fight_invader(ref self: ContractState, planet_id: felt252, colonists: u8) {
             let mut world = self.world(@DEFAULT_NS());
             let token_address = _get_token_address(world);
 
@@ -646,11 +569,7 @@ mod game_systems {
             let col_count: u32 = colonists.into();
             assert!(ua.count >= col_count, "Planets: not enough idle colonists");
 
-            let gear: Gear = world.read_model(planet_id);
-            assert!(gear.weapons >= weapons, "Planets: not enough weapons");
-            assert!(gear.armor >= armor, "Planets: not enough armor");
-
-            // Sum strength of all unassigned colonists scaled by proportion being sent
+            // Sum strength of all unassigned colonists being sent
             let mut total_ua_strength: u32 = 0;
             let mut si: u32 = 0;
             loop {
@@ -661,9 +580,7 @@ mod game_systems {
                 si += 1;
             };
             let avg_str: u32 = if ua.count > 0 { total_ua_strength / ua.count } else { 1 };
-            let base_power: u32 = col_count * avg_str
-                + weapons * WEAPON_POWER
-                + armor * ARMOR_POWER;
+            let base_power: u32 = col_count * avg_str;
 
             let now = get_block_timestamp();
             let mut planet: Planet = world.read_model(planet_id);
@@ -681,6 +598,7 @@ mod game_systems {
             let invader: Invader = world.read_model(planet_id);
 
             if fighter_power >= invader.strength {
+                // Win: minimal casualties
                 let casualties: u32 = if invader.strength / 20 > col_count {
                     col_count
                 } else {
@@ -689,7 +607,12 @@ mod game_systems {
                 _kill_random(ref world, planet_id, casualties, planet.seed, planet.action_count, now);
                 planet.population = if planet.population > casualties { planet.population - casualties } else { 0 };
                 world.write_model(@Invader { planet_id, active: false, strength: 0, lon: 0, lat: 0, spawned_at: 0, epochs_until_attack: 0 });
+                // Reset spawn timer so a new invader doesn't arrive immediately
+                let mut res: Resources = world.read_model(planet_id);
+                res.last_threat_at = now;
+                world.write_model(@res);
             } else {
+                // Loss: more casualties, invader weakened
                 let excess = invader.strength - fighter_power;
                 let casualties: u32 = if excess / 5 + 1 > col_count { col_count } else { excess / 5 + 1 };
                 _kill_random(ref world, planet_id, casualties, planet.seed, planet.action_count, now);
@@ -795,87 +718,88 @@ mod game_systems {
         // --- Compute production rates (skip buildings still under construction/upgrade/training) ---
         let mut water_rate: u32 = 0;
         let mut iron_rate: u32 = 0;
-        let mut defense_rate: u32 = 0;
         let mut uranium_rate: u32 = 0;
-        let mut cannon_damage_rate: u32 = 0;
+        let mut cannon_rate: u32 = 0;
 
         let mut i: u32 = 0;
         loop {
             if i >= bcount.count { break; }
             let entry: PlanetBuildingEntry = world.read_model((planet_id, i));
             let b: Building = world.read_model((planet_id, entry.lon, entry.lat));
-            // Skip buildings that are still busy (construction, upgrade, or training in progress)
             let active = b.completes_at == 0 || now >= b.completes_at;
             if active {
                 let w: u32 = b.workers.into();
                 if b.building_type == 1 { water_rate   += w * b.output_per_worker_epoch; }
                 else if b.building_type == 2 { iron_rate    += w * b.output_per_worker_epoch; }
                 else if b.building_type == 5 { uranium_rate += w * b.output_per_worker_epoch; }
-                else if b.building_type == 8 {
-                    defense_rate += w * b.output_per_worker_epoch;
-                    cannon_damage_rate += w * b.output_per_worker_epoch;
-                }
+                else if b.building_type == 8 { cannon_rate  += w * b.output_per_worker_epoch; }
             }
             i += 1;
         };
 
         resources.iron    += iron_rate    * epochs;
-        resources.defense += defense_rate * epochs;
         resources.uranium += uranium_rate * epochs;
 
-        // Invader management: cannon damage and attack countdown
+        // Invader management
         let mut invader: Invader = world.read_model(planet_id);
 
         if invader.active {
-            // Cannons reduce invader strength
-            if cannon_damage_rate > 0 {
-                let cannon_total = cannon_damage_rate * epochs;
+            // Cannons do direct damage to active invader each epoch
+            if cannon_rate > 0 {
+                let cannon_total = cannon_rate * epochs;
                 if invader.strength > cannon_total {
                     invader.strength -= cannon_total;
                 } else {
-                    // Cannons killed the invader
                     invader.active = false;
                     invader.strength = 0;
                     invader.epochs_until_attack = 0;
+                    resources.last_threat_at = now;
                 }
             }
 
-            // Countdown timer - invader attacks after 3 epochs
+            // Countdown: invader attacks when timer reaches 0
             if invader.active {
-                if invader.epochs_until_attack <= epochs.try_into().unwrap() {
-                    // INVADER ATTACKS! Kill colonists equal to remaining strength
-                    let casualties = invader.strength;
+                // Cast eua to u32 to avoid u8 overflow panic when epochs is large
+                let eua: u32 = invader.epochs_until_attack.into();
+                if eua <= epochs {
+                    // Passive attack: strength/10 damage, accumulated defense absorbs up to half
+                    let raw_damage = invader.strength / 10 + 1;
+                    let max_absorb = raw_damage / 2 + 1;
+                    let absorbed = if resources.defense >= max_absorb { max_absorb } else { resources.defense };
+                    resources.defense = if resources.defense > absorbed { resources.defense - absorbed } else { 0 };
+                    let casualties = raw_damage - absorbed;
                     let actual = if casualties > planet.population { planet.population } else { casualties };
                     if actual > 0 {
                         _kill_random(ref world, planet_id, actual, planet.seed, planet.action_count + 3000, now);
                         planet.population = if planet.population > actual { planet.population - actual } else { 0 };
                     }
-                    // Invader leaves after attacking
                     invader.active = false;
                     invader.strength = 0;
                     invader.epochs_until_attack = 0;
+                    resources.last_threat_at = now;
                 } else {
-                    // Countdown continues
+                    // Safe: eua > epochs and eua starts at 3, so epochs <= 2, fits u8
                     invader.epochs_until_attack -= epochs.try_into().unwrap();
                 }
             }
 
             world.write_model(@invader);
+        } else {
+            // No active invader: cannons stockpile passive defense
+            resources.defense += cannon_rate * epochs;
         }
 
-        // Water: produce then consume (1 per colonist per epoch)
+        // Water: produce then consume (WATER_PER_COLONIST_PER_EPOCH per colonist per epoch)
         let water_produced = water_rate * epochs;
-        let water_consumed = planet.population * epochs;
+        let water_consumed = planet.population * WATER_PER_COLONIST_PER_EPOCH * epochs;
         let available = resources.water + water_produced;
 
         if available >= water_consumed {
             resources.water = available - water_consumed;
-            // Natural population growth removed - only Houses spawn colonists
         } else {
             // Water shortage: kill colonists
             resources.water = 0;
             let shortage = water_consumed - available;
-            // Kill 1 colonist per 5 water shortage, minimum 1 per epoch
             let deaths_per_epoch: u32 = if shortage / 5 < 1 { 1 } else { shortage / 5 };
             let total_deaths: u32 = deaths_per_epoch * epochs;
             let actual_deaths: u32 = if total_deaths > planet.population {
@@ -885,43 +809,37 @@ mod game_systems {
             };
             if actual_deaths > 0 {
                 _kill_random(ref world, planet_id, actual_deaths, planet.seed, planet.action_count, now);
-                planet.population = if planet.population > actual_deaths { 
-                    planet.population - actual_deaths 
-                } else { 
-                    0 
+                planet.population = if planet.population > actual_deaths {
+                    planet.population - actual_deaths
+                } else {
+                    0
                 };
             }
         }
 
-        // Deterministic invader spawning every 10 epochs (20 minutes)
-        // Only spawn if no active invader
+        // Invader spawn: first invasion 3 epochs after founding, then every 5 epochs.
+        // Uses last_threat_at to avoid the modulo-alignment bug.
         if !invader.active {
-            let epochs_since_spawn = (now - planet.spawned_at) / EPOCH_SECONDS;
-            let should_spawn = (epochs_since_spawn % 10) == 0 && epochs_since_spawn > 0;
-            
-            if should_spawn {
-                // Calculate threat for invader strength
-                let time_alive = now - planet.spawned_at;
-                let time_comp: u32 = ((time_alive / EPOCH_SECONDS) / 5).try_into().unwrap_or(255);
+            let colony: Colony = world.read_model(planet_id);
+            // is_first: last_threat_at was set to founded_at at colony founding and hasn't changed
+            let is_first = resources.last_threat_at == colony.founded_at;
+            let spawn_interval: u64 = if is_first { EPOCH_SECONDS * 3 } else { EPOCH_SECONDS * 5 };
+            if now - resources.last_threat_at >= spawn_interval {
+                let epochs_since_founding: u32 = ((now - colony.founded_at) / EPOCH_SECONDS).try_into().unwrap_or(0);
+                let time_comp: u32 = epochs_since_founding / 5;
                 let wealth_comp = resources.iron / 50;
                 let size_comp = planet.population / 3;
                 let threat_raw = time_comp + wealth_comp + size_comp;
                 let threat: u32 = if threat_raw > 100 { 100 } else { threat_raw };
 
-                // Spawn invader near colony
-                let colony: Colony = world.read_model(planet_id);
                 let base_lon: u32 = colony.col * LON_PER_HEX + LON_PER_HEX / 2;
                 let base_lat: u32 = colony.row * LAT_PER_HEX + LAT_PER_HEX / 2;
-                
-                // Use deterministic offset based on epoch number
-                let epoch_num: u32 = epochs_since_spawn.try_into().unwrap_or(0);
-                let lon_offset: u32 = (epoch_num * 37) % 360; // Pseudo-random but deterministic
-                let lat_offset: u32 = (epoch_num * 73) % 180;
+                let lon_offset: u32 = (epochs_since_founding * 37) % 360;
+                let lat_offset: u32 = (epochs_since_founding * 73) % 180;
                 let inv_lon: u32 = (base_lon + lon_offset) % 3600;
                 let inv_lat: u32 = (base_lat + lat_offset) % 1800;
-                
-                // Invader strength scales with threat
-                let inv_strength: u32 = threat * 4;
+                // Min strength 5 so early invaders are always a real threat
+                let inv_strength: u32 = threat * 4 + 5;
 
                 invader = Invader {
                     planet_id,
@@ -930,8 +848,9 @@ mod game_systems {
                     lon: inv_lon.try_into().unwrap_or(0),
                     lat: inv_lat.try_into().unwrap_or(0),
                     spawned_at: now,
-                    epochs_until_attack: 3, // 3 epochs (6 minutes) until attack
+                    epochs_until_attack: 3,
                 };
+                resources.last_threat_at = now;
                 world.write_model(@invader);
             }
         }
