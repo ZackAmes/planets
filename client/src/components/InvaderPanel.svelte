@@ -49,9 +49,9 @@
         <span class="inv-val danger">{invader.strength}</span>
       </div>
       <div class="inv-stat">
-        <span class="inv-label">Drain/ep</span>
-        <span class="inv-val" class:danger={netInvDmg > 0} class:safe={netInvDmg === 0}>
-          {passiveDmg} def
+        <span class="inv-label">Attacks In</span>
+        <span class="inv-val" class:critical={invader.epochsUntilAttack <= 1}>
+          {invader.epochsUntilAttack} epoch{invader.epochsUntilAttack !== 1 ? 's' : ''}
         </span>
       </div>
       {#if cannonDamageRate > 0}
@@ -62,16 +62,20 @@
       {/if}
     </div>
 
-    {#if resources?.defense !== undefined}
-      {@const turnsUntilDead = netInvDmg > 0 ? Math.floor(resources.defense / netInvDmg) : 999}
-      {#if turnsUntilDead < 999}
-        <p class="defense-warn" class:critical={turnsUntilDead <= 2}>
-          Defense depleted in ~{turnsUntilDead} epoch{turnsUntilDead !== 1 ? 's' : ''} — then colonists die
-        </p>
-      {:else}
-        <p class="defense-ok">Cannons absorbing all invader damage</p>
+    <div class="attack-warning" class:critical={invader.epochsUntilAttack <= 1}>
+      <p class="attack-message">
+        {#if invader.epochsUntilAttack === 0}
+          ⚠️ ATTACK IMMINENT! Will kill {invader.strength} colonists this epoch!
+        {:else if invader.epochsUntilAttack === 1}
+          ⚠️ Invaders attack next epoch! Will kill {invader.strength} colonists!
+        {:else}
+          Invaders will attack in {invader.epochsUntilAttack} epochs, killing {invader.strength} colonists
+        {/if}
+      </p>
+      {#if cannonDamageRate > 0}
+        <p class="cannon-hint">Cannons reduce strength by {cannonDamageRate} per epoch</p>
       {/if}
-    {/if}
+    </div>
 
     <div class="fight-setup">
       <div class="fight-row">
@@ -192,6 +196,47 @@
 
   .inv-val.safe {
     color: #44cc66;
+  }
+
+  .inv-val.critical {
+    color: #ff4444;
+    animation: danger-pulse 1s ease-in-out infinite;
+  }
+
+  .attack-warning {
+    background: #1a0a00;
+    border: 1px solid #4a2a00;
+    border-radius: 4px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .attack-warning.critical {
+    background: #1a0000;
+    border-color: #6a1a1a;
+    animation: danger-pulse 1.5s ease-in-out infinite;
+  }
+
+  .attack-message {
+    font-size: 0.7rem;
+    color: #cc8844;
+    margin: 0;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  .attack-warning.critical .attack-message {
+    color: #ff4444;
+  }
+
+  .cannon-hint {
+    font-size: 0.6rem;
+    color: #44aa66;
+    margin: 0;
+    text-align: center;
+    font-style: italic;
   }
 
   .defense-warn {

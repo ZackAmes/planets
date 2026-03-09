@@ -186,14 +186,18 @@ export function buildingOutputPerWorkerEpoch(buildingType, bonus) {
  */
 export function computeThreat(planet, resources, nowSeconds) {
   const timeAlive = nowSeconds - (planet.spawnedAt ?? 0)
-  const timeComp   = Math.floor((timeAlive / EPOCH_SECONDS) / 10)
-  const wealthComp = Math.floor((resources?.iron ?? 0) / 100)
-  const sizeComp   = Math.floor(planet.population / 20)
+  // Threat builds faster - time component doubled (was /10, now /5)
+  const timeComp   = Math.floor((timeAlive / EPOCH_SECONDS) / 5)
+  // Resources matter more - wealth component doubled (was /100, now /50)
+  const wealthComp = Math.floor((resources?.iron ?? 0) / 50)
+  // Population matters more (was /20, now /3 to match contract)
+  const sizeComp   = Math.floor(planet.population / 3)
   return Math.min(100, timeComp + wealthComp + sizeComp)
 }
 
 export function attackProbability(threat) {
-  return Math.floor(threat * 80 / 100)
+  // Spawn threshold is now 50% of threat (was 33%)
+  return Math.floor(threat * 50 / 100)
 }
 
 // ---------------------------------------------------------------------------

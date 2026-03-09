@@ -188,7 +188,7 @@ mod game_systems {
             world.write_model(@ColonistsUnassigned { planet_id, count: 0 });
             world.write_model(@PlanetColonistCount { planet_id, count: 0 });
             world.write_model(@Gear { planet_id, weapons: 0, armor: 0 });
-            world.write_model(@Invader { planet_id, active: false, strength: 0, lon: 0, lat: 0, spawned_at: 0 });
+            world.write_model(@Invader { planet_id, active: false, strength: 0, lon: 0, lat: 0, spawned_at: 0, epochs_until_attack: 0 });
 
             let mut i: u32 = 0;
             loop {
@@ -688,7 +688,7 @@ mod game_systems {
                 };
                 _kill_random(ref world, planet_id, casualties, planet.seed, planet.action_count, now);
                 planet.population = if planet.population > casualties { planet.population - casualties } else { 0 };
-                world.write_model(@Invader { planet_id, active: false, strength: 0, lon: 0, lat: 0, spawned_at: 0 });
+                world.write_model(@Invader { planet_id, active: false, strength: 0, lon: 0, lat: 0, spawned_at: 0, epochs_until_attack: 0 });
             } else {
                 let excess = invader.strength - fighter_power;
                 let casualties: u32 = if excess / 5 + 1 > col_count { col_count } else { excess / 5 + 1 };
@@ -704,6 +704,7 @@ mod game_systems {
                             lon: invader.lon,
                             lat: invader.lat,
                             spawned_at: invader.spawned_at,
+                            epochs_until_attack: invader.epochs_until_attack,
                         },
                     );
             }
@@ -822,40 +823,44 @@ mod game_systems {
         resources.defense += defense_rate * epochs;
         resources.uranium += uranium_rate * epochs;
 
-        // Invader passive damage and cannon fire
+        // Invader management: cannon damage and attack countdown
         let mut invader: Invader = world.read_model(planet_id);
 
-        // Cannon fires before passive damage — may kill invader entirely
-        if invader.active && cannon_damage_rate > 0 {
-            let cannon_total = cannon_damage_rate * epochs;
-            let new_inv_str = if invader.strength > cannon_total { invader.strength - cannon_total } else { 0 };
-            let new_inv_active = new_inv_str > 0;
-            world.write_model(@Invader {
-                planet_id, active: new_inv_active, strength: new_inv_str,
-                lon: invader.lon, lat: invader.lat, spawned_at: invader.spawned_at,
-            });
-            invader.active = new_inv_active;
-            invader.strength = new_inv_str;
-        }
         if invader.active {
-            let dmg_per_epoch: u32 = if invader.strength / PASSIVE_DAMAGE_DIV < 1 {
-                1
-            } else {
-                invader.strength / PASSIVE_DAMAGE_DIV
-            };
-            let total_dmg = dmg_per_epoch * epochs;
-            if resources.defense >= total_dmg {
-                resources.defense -= total_dmg;
-            } else {
-                let overflow = total_dmg - resources.defense;
-                resources.defense = 0;
-                let casualties: u32 = if overflow / 10 < 1 { 1 } else { overflow / 10 };
-                let actual = if casualties > planet.population { planet.population } else { casualties };
-                if actual > 0 {
-                    _kill_random(ref world, planet_id, actual, planet.seed, planet.action_count + 2000, now);
-                    planet.population = if planet.population > actual { planet.population - actual } else { 0 };
+            // Cannons reduce invader strength
+            if cannon_damage_rate > 0 {
+                let cannon_total = cannon_damage_rate * epochs;
+                if invader.strength > cannon_total {
+                    invader.strength -= cannon_total;
+                } else {
+                    // Cannons killed the invader
+                    invader.active = false;
+                    invader.strength = 0;
+                    invader.epochs_until_attack = 0;
                 }
             }
+
+            // Countdown timer - invader attacks after 3 epochs
+            if invader.active {
+                if invader.epochs_until_attack <= epochs.try_into().unwrap() {
+                    // INVADER ATTACKS! Kill colonists equal to remaining strength
+                    let casualties = invader.strength;
+                    let actual = if casualties > planet.population { planet.population } else { casualties };
+                    if actual > 0 {
+                        _kill_random(ref world, planet_id, actual, planet.seed, planet.action_count + 3000, now);
+                        planet.population = if planet.population > actual { planet.population - actual } else { 0 };
+                    }
+                    // Invader leaves after attacking
+                    invader.active = false;
+                    invader.strength = 0;
+                    invader.epochs_until_attack = 0;
+                } else {
+                    // Countdown continues
+                    invader.epochs_until_attack -= epochs.try_into().unwrap();
+                }
+            }
+
+            world.write_model(@invader);
         }
 
         // Water: produce then consume (1 per colonist per epoch)
@@ -888,48 +893,46 @@ mod game_systems {
             }
         }
 
-        // Threat check
-        if now - resources.last_threat_at >= THREAT_CHECK_INTERVAL && !invader.active {
-            resources.last_threat_at = now;
+        // Deterministic invader spawning every 10 epochs (20 minutes)
+        // Only spawn if no active invader
+        if !invader.active {
+            let epochs_since_spawn = (now - planet.spawned_at) / EPOCH_SECONDS;
+            let should_spawn = (epochs_since_spawn % 10) == 0 && epochs_since_spawn > 0;
+            
+            if should_spawn {
+                // Calculate threat for invader strength
+                let time_alive = now - planet.spawned_at;
+                let time_comp: u32 = ((time_alive / EPOCH_SECONDS) / 5).try_into().unwrap_or(255);
+                let wealth_comp = resources.iron / 50;
+                let size_comp = planet.population / 3;
+                let threat_raw = time_comp + wealth_comp + size_comp;
+                let threat: u32 = if threat_raw > 100 { 100 } else { threat_raw };
 
-            let time_alive = now - planet.spawned_at;
-            let time_comp: u32 = ((time_alive / EPOCH_SECONDS) / 10).try_into().unwrap_or(255);
-            let wealth_comp = resources.iron / 100;
-            let size_comp = planet.population / 5;
-            let threat_raw = time_comp + wealth_comp + size_comp;
-            let threat: u32 = if threat_raw > 100 { 100 } else { threat_raw };
-
-            let rng: felt252 = poseidon_hash_span(
-                array![planet.seed, planet.action_count.into(), now.into(), 999].span(),
-            );
-            let rng_pct: u32 = (Into::<felt252, u256>::into(rng) % 100).try_into().unwrap_or(50);
-
-            if rng_pct < threat / 3 {
+                // Spawn invader near colony
                 let colony: Colony = world.read_model(planet_id);
                 let base_lon: u32 = colony.col * LON_PER_HEX + LON_PER_HEX / 2;
                 let base_lat: u32 = colony.row * LAT_PER_HEX + LAT_PER_HEX / 2;
-                let rng2: felt252 = poseidon_hash_span(
-                    array![planet.seed, planet.action_count.into(), now.into(), 1337].span(),
-                );
-                let offset_u256: u256 = rng2.into();
-                let lon_offset: u32 = (offset_u256 % 360).try_into().unwrap_or(180);
-                let lat_offset: u32 = ((offset_u256 / 360) % 180).try_into().unwrap_or(90);
+                
+                // Use deterministic offset based on epoch number
+                let epoch_num: u32 = epochs_since_spawn.try_into().unwrap_or(0);
+                let lon_offset: u32 = (epoch_num * 37) % 360; // Pseudo-random but deterministic
+                let lat_offset: u32 = (epoch_num * 73) % 180;
                 let inv_lon: u32 = (base_lon + lon_offset) % 3600;
                 let inv_lat: u32 = (base_lat + lat_offset) % 1800;
-                let inv_strength: u32 = threat * 3;
+                
+                // Invader strength scales with threat
+                let inv_strength: u32 = threat * 4;
 
-                world
-                    .write_model(
-                        @Invader {
-                            planet_id,
-                            active: true,
-                            strength: inv_strength,
-                            lon: inv_lon.try_into().unwrap_or(0),
-                            lat: inv_lat.try_into().unwrap_or(0),
-                            spawned_at: now,
-                        },
-                    );
-                invader.active = true;
+                invader = Invader {
+                    planet_id,
+                    active: true,
+                    strength: inv_strength,
+                    lon: inv_lon.try_into().unwrap_or(0),
+                    lat: inv_lat.try_into().unwrap_or(0),
+                    spawned_at: now,
+                    epochs_until_attack: 3, // 3 epochs (6 minutes) until attack
+                };
+                world.write_model(@invader);
             }
         }
 

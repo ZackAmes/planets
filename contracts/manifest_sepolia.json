@@ -1,8 +1,8 @@
 {
   "world": {
-    "class_hash": "0x6d298044917078f70f5f20216af72167615f6202063558ff9948e21406df59e",
-    "address": "0x3301200ecb43c6eba1a3e71ca342331a666c355361827cf531f00dcccb19007",
-    "seed": "planets_sepolia_v7",
+    "class_hash": "0x381899226c066a0262f45d6ab815f89818e0874ec3e66cdf72b5e92d8db4680",
+    "address": "0x64cde5098f3f2a55e64d267cbce0a8257232603f2e645346db14cf2cee4bfe0",
+    "seed": "planets_sepolia_v8",
     "name": "Starnet",
     "entrypoints": [
       "uuid",
@@ -1485,8 +1485,8 @@
   },
   "contracts": [
     {
-      "address": "0x70231955a999bca7b8e6f4d46c37db53497bab560d9fa13cb4ee72acf22ec6e",
-      "class_hash": "0x4b799ad1c08dddaa60e92d9b07add8dcdd5fe9ef251a98a151dee2ce730f66b",
+      "address": "0x36e5a52a1b0b93820661b30a1e508efaf51039ef20f575f1c41ebecd0b7fe34",
+      "class_hash": "0x31dfbb8035d454a4d285b0488f8db56d1ce36aa88079f34c628b68a4c86a215",
       "abi": [
         {
           "type": "impl",
@@ -1878,7 +1878,7 @@
       ]
     },
     {
-      "address": "0x7848153117da4254930f67ab647dba41f79276ec978b1555ef21f69d56d842e",
+      "address": "0x1b180d2ac84f2cdc4d3d26d3d2c101061c8f4150ace28a208fc6a4f01f77b87",
       "class_hash": "0x402f7725d7b5576367a3ead1690d2d9d6ad6f28a17d32fdfee08ad912ff6625",
       "abi": [
         {
@@ -2698,8 +2698,8 @@
       ]
     },
     {
-      "address": "0x4309a084c27b60e2a7d41dbfe5ed06ae3f492f0cd3c0b2569815979e113ee65",
-      "class_hash": "0x1ea4ec1bdec63afa40d3d48b41fa53441170853845e9f1926ed59de39c8236e",
+      "address": "0x10cfdab10b30062b235f8370d6d0a5e7de634fedb8549d7783a5a417db2573",
+      "class_hash": "0xfb2db541252b7099f78d5b66daf874876333563661418c2eb9dfc385932ce0",
       "abi": [
         {
           "type": "impl",
@@ -2980,6 +2980,10 @@
             {
               "name": "spawned_at",
               "type": "core::integer::u64"
+            },
+            {
+              "name": "epochs_until_attack",
+              "type": "core::integer::u8"
             }
           ]
         },
@@ -3361,8 +3365,8 @@
       ]
     },
     {
-      "address": "0x18852a4290716ac54e25f3d483d53f829f3188999f031e8741a40804443aa80",
-      "class_hash": "0x4001b35cb0351a643869554eb9a261b94f4eccd67795388b8aad46ad3f03f",
+      "address": "0x6ebe2d8b2acdc2a986a61b3491e6a5437ed3796c28f282e34ca7b34abb20110",
+      "class_hash": "0x131c2ba125f947b1330a9ed3a048c59a3c41220b6066ca8afb5fed2042c4953",
       "abi": [
         {
           "type": "impl",
@@ -8722,9 +8726,14 @@
           "name": "spawned_at",
           "type": "core::integer::u64",
           "key": false
+        },
+        {
+          "name": "epochs_until_attack",
+          "type": "core::integer::u8",
+          "key": false
         }
       ],
-      "class_hash": "0x7a347bfc3c6dd0ad0313c84ee596ffab5dd065f1845156203c68bfa6c36e824",
+      "class_hash": "0x6c0f17269a9dde7eb63c2d43e4b07cccbc828d3bb1b918adbd4ee04dedfd781",
       "tag": "planets-Invader",
       "selector": "0x1c7d6f8c1b19c71689e412b42aa39fd036a36f69836a7fde6333eef8a8419ed",
       "abi": [
@@ -8769,6 +8778,10 @@
             {
               "name": "spawned_at",
               "type": "core::integer::u64"
+            },
+            {
+              "name": "epochs_until_attack",
+              "type": "core::integer::u8"
             }
           ]
         },
@@ -8807,6 +8820,10 @@
             {
               "name": "spawned_at",
               "type": "core::integer::u64"
+            },
+            {
+              "name": "epochs_until_attack",
+              "type": "core::integer::u8"
             }
           ]
         },

@@ -14,6 +14,7 @@
 
   // Tutorial progression tracking
   let dismissedTips = $state(new Set())
+  let currentTipIndex = $state(0)
 
   function dismissTip(tipId) {
     dismissedTips.add(tipId)
@@ -22,7 +23,147 @@
     }
   }
 
-  // Determine which tip to show based on game state
+  // Get all relevant tips based on game state
+  const allRelevantTips = $derived.by(() => {
+    const tips = []
+    
+    // Phase-based tips
+    if (phase === 'founding' && !dismissedTips.has('founding')) {
+      tips.push({
+        id: 'founding',
+        title: 'Welcome to Your Colony!',
+        message: 'Click anywhere on the planet to found your colony. Try to pick a strategic location with varied terrain for different building bonuses.',
+        type: 'tutorial'
+      })
+    }
+
+    // Early game tips
+    if (planet?.actionCount === 0 && !dismissedTips.has('first_turn')) {
+      tips.push({
+        id: 'first_turn',
+        title: 'Getting Started',
+        message: 'Click "Collect Resources" to advance time. Each epoch lasts 2 minutes. Resources only generate from buildings with assigned workers!',
+        type: 'tutorial'
+      })
+    }
+
+    if (buildings.length === 1 && !dismissedTips.has('first_build')) {
+      tips.push({
+        id: 'first_build',
+        title: 'Build Your Colony',
+        message: 'Click "Enter Build Mode" to construct buildings. Water Wells and Iron Mines generate resources when workers are assigned to them. Build a House to add colonists!',
+        type: 'tutorial'
+      })
+    }
+
+    // CRITICAL: Worker assignment education
+    if (buildings.length >= 2 && !dismissedTips.has('assign_workers')) {
+      const workerBuildings = buildings.filter(b => b.maxWorkers > 0)
+      const hasUnassigned = workerBuildings.some(b => b.workers === 0)
+      if (hasUnassigned) {
+        tips.push({
+          id: 'assign_workers',
+          title: '⚠️ Assign Workers!',
+          message: 'Buildings don\'t produce anything without workers! Click a building on the planet, then use +/- buttons to assign colonists. Buildings need workers to generate resources.',
+          type: 'warning'
+        })
+      }
+    }
+
+    // No water production warning
+    if (buildings.length > 1 && !dismissedTips.has('no_water_production')) {
+      const waterWells = buildings.filter(b => b.buildingType === 1)
+      const hasWaterWell = waterWells.length > 0
+      const waterProducing = waterWells.some(b => b.workers > 0)
+      if (hasWaterWell && !waterProducing) {
+        tips.push({
+          id: 'no_water_production',
+          title: '💧 No Water Production!',
+          message: 'Your Water Wells have no workers assigned! Click the Water Well on the planet and assign colonists, or your colony will die of thirst.',
+          type: 'warning'
+        })
+      }
+    }
+
+    // Contextual tips based on state
+    if (populationAtCap && !dismissedTips.has('population_cap')) {
+      tips.push({
+        id: 'population_cap',
+        title: 'Population Cap Reached',
+        message: `Upgrade your Town Center to increase the colonist limit beyond ${tcLevel * 10}. Higher TC levels also unlock advanced buildings.`,
+        type: 'tip'
+      })
+    }
+
+    if (!hasWorkshop && tcLevel >= 2 && !dismissedTips.has('workshop_unlock')) {
+      tips.push({
+        id: 'workshop_unlock',
+        title: 'Workshop Available',
+        message: 'You can now build a Workshop! It unlocks gear crafting, which is essential for fighting invaders.',
+        type: 'tip'
+      })
+    }
+
+    if (threat > 50 && !invaderActive && !dismissedTips.has('danger_warning')) {
+      tips.push({
+        id: 'danger_warning',
+        title: '⚠️ Danger Rising',
+        message: 'Having more stored resources increases danger! Build Cannons for defense or spend resources quickly. Each epoch has a chance to spawn invaders.',
+        type: 'warning'
+      })
+    }
+
+    if (invaderActive && !dismissedTips.has('invader_help')) {
+      tips.push({
+        id: 'invader_help',
+        title: 'Under Attack!',
+        message: 'Invaders drain your defense each epoch. Fight them off with colonists + gear, or let Cannons wear them down. If defense hits zero, colonists start dying!',
+        type: 'warning'
+      })
+    }
+
+    if ((resources?.water ?? 0) < 0 && !dismissedTips.has('negative_water')) {
+      tips.push({
+        id: 'negative_water',
+        title: 'Water Shortage',
+        message: 'Your water is negative! Build more Water Wells or reduce population. Negative water prevents new colonists from spawning.',
+        type: 'warning'
+      })
+    }
+
+    // Advanced tips
+    if (buildings.length >= 5 && !dismissedTips.has('worker_efficiency')) {
+      tips.push({
+        id: 'worker_efficiency',
+        title: 'Pro Tip: Terrain Bonuses',
+        message: 'Different terrains give bonuses: Mountains are great for mines, Beaches for water wells. Check the bonus when placing buildings!',
+        type: 'tip'
+      })
+    }
+
+    if (buildings.some(b => b.buildingType === 4) && !dismissedTips.has('training')) {
+      tips.push({
+        id: 'training',
+        title: 'Training Colonists',
+        message: 'Assign colonists to Barracks to train them. Trained colonists are stronger fighters with better survival rates in combat.',
+        type: 'tip'
+      })
+    }
+
+    // Population growth explanation
+    if (buildings.some(b => b.buildingType === 3) && !dismissedTips.has('houses_only')) {
+      tips.push({
+        id: 'houses_only',
+        title: 'Population Growth',
+        message: 'Population only grows by building Houses! Each House instantly spawns one colonist. There is no natural population growth.',
+        type: 'tip'
+      })
+    }
+
+    return tips
+  })
+
+  // Current tip to display
   const currentTip = $derived.by(() => {
     // Phase-based tips
     if (phase === 'founding' && !dismissedTips.has('founding')) {
@@ -157,8 +298,27 @@
       }
     }
 
-    return null
+    if (allRelevantTips.length === 0) return null
+    
+    // Clamp index to valid range
+    if (currentTipIndex >= allRelevantTips.length) {
+      currentTipIndex = 0
+    }
+    
+    return allRelevantTips[currentTipIndex]
   })
+
+  function nextTip() {
+    if (allRelevantTips.length > 0) {
+      currentTipIndex = (currentTipIndex + 1) % allRelevantTips.length
+    }
+  }
+
+  function prevTip() {
+    if (allRelevantTips.length > 0) {
+      currentTipIndex = (currentTipIndex - 1 + allRelevantTips.length) % allRelevantTips.length
+    }
+  }
 
   const tipIcon = $derived({
     tutorial: '💡',
@@ -181,6 +341,13 @@
       <button class="tip-dismiss" onclick={() => dismissTip(currentTip.id)}>×</button>
     </div>
     <p class="tip-message">{currentTip.message}</p>
+    {#if allRelevantTips.length > 1}
+      <div class="tip-nav">
+        <button class="tip-nav-btn" onclick={prevTip}>←</button>
+        <span class="tip-counter">{currentTipIndex + 1} / {allRelevantTips.length}</span>
+        <button class="tip-nav-btn" onclick={nextTip}>→</button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -252,5 +419,43 @@
     font-size: 0.75rem;
     color: #aac;
     line-height: 1.5;
+  }
+
+  .tip-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(100, 120, 140, 0.2);
+  }
+
+  .tip-nav-btn {
+    background: rgba(100, 120, 140, 0.2);
+    border: 1px solid rgba(100, 120, 140, 0.3);
+    border-radius: 4px;
+    color: #aac;
+    font-size: 0.9rem;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+
+  .tip-nav-btn:hover {
+    background: rgba(100, 120, 140, 0.4);
+    border-color: var(--tip-color);
+    color: var(--tip-color);
+  }
+
+  .tip-counter {
+    font-size: 0.65rem;
+    color: #667;
+    min-width: 3rem;
+    text-align: center;
   }
 </style>

@@ -232,9 +232,12 @@ function parseBuildings(arr) {
 
 function parseInvader(inv) {
   return {
-    active: Boolean(inv.active), strength: Number(inv.strength),
-    lon: Number(inv.lon), lat: Number(inv.lat),
+    active: Boolean(inv.active), 
+    strength: Number(inv.strength),
+    lon: Number(inv.lon), 
+    lat: Number(inv.lat),
     spawnedAt: Number(BigInt(inv.spawned_at)),
+    epochsUntilAttack: Number(inv.epochs_until_attack ?? 0),
   }
 }
 

@@ -254,7 +254,7 @@
   // Building selection
   // ---------------------------------------------------------------------------
   function handleBuildingClick(lon, lat) {
-    if (buildMode) return // Don't select buildings during build mode
+    // Allow building selection even in build mode
     if (selectedBuilding && selectedBuilding.lon === lon && selectedBuilding.lat === lat) {
       // Click same building again to deselect
       selectedBuilding = null
@@ -301,7 +301,7 @@
   // ---------------------------------------------------------------------------
   function handleToggleBuildMode() {
     buildMode = !buildMode
-    selectedBuilding = null // Deselect any building when entering build mode
+    // Don't deselect building when entering build mode
     if (!buildMode) {
       // Exiting build mode
       selectedBuildType = null

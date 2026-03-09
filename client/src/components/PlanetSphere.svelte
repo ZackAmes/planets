@@ -43,6 +43,7 @@
     const localPos = [localPoint.x, localPoint.y, localPoint.z]
     const { lon, lat } = uvToLonLat(uv.x, uv.y)
 
+    // Only trigger build placement on terrain clicks (not building clicks)
     if (canBuild && onbuildpick) {
       onbuildpick(lon, lat, localPos)
       return
@@ -59,11 +60,13 @@
   const buildingMarkers = $derived(
     buildings.map((b) => {
       const isSelected = selectedBuilding && b.lon === selectedBuilding.lon && b.lat === selectedBuilding.lat
+      const isUnderConstruction = b.completesAt && b.completesAt > Date.now() / 1000
       return {
         ...b,
         pos: lonLatToLocal(b.lon, b.lat, 8.15),
         color: BUILDING_INFO[b.buildingType]?.color ?? '#ffffff',
         isSelected,
+        isUnderConstruction,
       }
     })
   )
@@ -108,9 +111,9 @@
     <T.Mesh position={b.pos} onclick={(e) => handleBuildingClick(e, b)}>
       <T.SphereGeometry args={[b.isSelected ? 0.24 : 0.18, 8, 8]} />
       <T.MeshStandardMaterial
-        color={b.color}
-        emissive={b.color}
-        emissiveIntensity={b.isSelected ? 1.2 : 0.6}
+        color={b.isUnderConstruction ? '#ffaa00' : b.color}
+        emissive={b.isUnderConstruction ? '#ff8800' : b.color}
+        emissiveIntensity={b.isSelected ? 1.2 : (b.isUnderConstruction ? 0.9 : 0.6)}
         roughness={0.4}
       />
     </T.Mesh>
@@ -123,8 +126,11 @@
       occlude={false}
       zIndexRange={[100, 0]}
     >
-      <div class="building-label" class:selected={b.isSelected}>
+      <div class="building-label" class:selected={b.isSelected} class:under-construction={b.isUnderConstruction}>
         {BUILDING_INFO[b.buildingType]?.name ?? '?'}
+        {#if b.isUnderConstruction}
+          <span class="construction-indicator">🏗️</span>
+        {/if}
       </div>
     </HTML>
   {/each}
@@ -177,5 +183,27 @@
     border-color: #6ab4ff;
     color: #6ab4ff;
     font-weight: bold;
+  }
+
+  :global(.building-label.under-construction) {
+    color: #ffaa00;
+    border-color: #ff8800;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      text-shadow: 0 0 4px rgba(255, 170, 0, 0.6);
+    }
+    50% {
+      opacity: 0.7;
+      text-shadow: 0 0 8px rgba(255, 136, 0, 0.9);
+    }
+  }
+
+  :global(.construction-indicator) {
+    margin-left: 0.25rem;
+    font-size: 0.8em;
   }
 </style>
