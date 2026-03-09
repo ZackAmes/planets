@@ -13,9 +13,8 @@
 
   const tcCost = $derived(tcUpgradeCost(tcLevel))
   const canUpgradeTc = $derived(
-    tcLevel < 5 &&
-    (resources?.iron ?? 0) >= tcCost.iron &&
-    (resources?.uranium ?? 0) >= tcCost.uranium
+    tcLevel < 3 &&
+    (resources?.iron ?? 0) >= tcCost.iron
   )
 
   const avgFighterStrength = $derived(
@@ -52,13 +51,13 @@
   <div class="divider"></div>
 
   <button class="tc-btn" onclick={onupgradetc}
-    disabled={!canUpgradeTc || disabled || tcLevel >= 5}>
-    {#if tcLevel >= 5}
+    disabled={!canUpgradeTc || disabled || tcLevel >= 3}>
+    {#if tcLevel >= 3}
       TC Max Level
     {:else}
       Upgrade TC lv{tcLevel}→{tcLevel + 1}
       <span class="cost-detail">
-        {tcCost.iron} iron{tcCost.uranium > 0 ? ` + ${tcCost.uranium} U` : ''}
+        {tcCost.iron} iron
       </span>
     {/if}
   </button>

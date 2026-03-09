@@ -85,15 +85,6 @@
     </div>
     
     <div class="stat">
-      <span class="label">Defense</span>
-      <span class="value green" class:estimating={isEstimating}>
-        {estimatedResources?.defense ?? 0}
-        {#if isEstimating}<span class="est-indicator">~</span>{/if}
-      </span>
-      <span class="rate positive">+{rates.defenseRate}/ep</span>
-    </div>
-    
-    <div class="stat">
       <span class="label">Uranium</span>
       <span class="value purple" class:estimating={isEstimating}>
         {estimatedResources?.uranium ?? 0}
@@ -102,6 +93,15 @@
       <span class="rate" class:positive={rates.uraniumRate > 0}>
         +{rates.uraniumRate}/ep
       </span>
+    </div>
+
+    <div class="stat defense-stat">
+      <span class="label">Defense</span>
+      <span class="value green" class:estimating={isEstimating}>
+        {estimatedResources?.defense ?? 0}
+        {#if isEstimating}<span class="est-indicator">~</span>{/if}
+      </span>
+      <span class="rate" class:positive={rates.defenseRate > 0}>+{rates.defenseRate}/ep</span>
     </div>
     
     <div class="stat">
@@ -113,6 +113,17 @@
 
   {#if isEstimating}
     <p class="estimate-note">~ Estimated values based on production rates</p>
+  {/if}
+
+  {#if rates.defenseRate > 0 || (resources?.defense ?? 0) > 0}
+    <p class="defense-note">
+      🛡️ <strong>Defense</strong> absorbs up to half of each invader attack.
+      {#if rates.defenseRate > 0}
+        Cannons stockpile +{rates.defenseRate}/ep when no invader, or deal direct damage when one is active.
+      {:else}
+        Build Cannons to stockpile defense and damage invaders.
+      {/if}
+    </p>
   {/if}
 
   <div class="epoch-section">
@@ -204,6 +215,23 @@
     font-size: 0.7rem;
     color: #8ac;
     margin-left: 0.1rem;
+  }
+
+  .defense-stat .label { color: #3a7a5a; }
+
+  .defense-note {
+    font-size: 0.62rem;
+    color: #5a8a6a;
+    margin: 0;
+    line-height: 1.5;
+    padding: 0.35rem 0.5rem;
+    background: rgba(10, 30, 20, 0.4);
+    border: 1px solid #1a3a2a;
+    border-radius: 4px;
+  }
+
+  .defense-note strong {
+    color: #6aff9a;
   }
 
   .estimate-note {

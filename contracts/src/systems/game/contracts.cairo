@@ -55,26 +55,26 @@ mod game_systems {
     const STARTING_IRON: u32 = 200;
     const STARTING_DEFENSE: u32 = 10;
 
-    const EPOCH_SECONDS: u64 = 120;  // 2 minutes per epoch
+    const EPOCH_SECONDS: u64 = 30;  // 30 seconds per epoch
     const MAX_EPOCHS: u64 = 720;      // cap at 24 hours
 
     // Building iron costs
     const WATER_WELL_COST: u32 = 50;
-    const IRON_MINE_COST: u32 = 80;
+    const IRON_MINE_WATER_COST: u32 = 80;
     const HOUSE_IRON_COST: u32 = 60;
     const HOUSE_WATER_COST: u32 = 50;
     const BARRACKS_COST: u32 = 100;
     const URANIUM_MINE_COST: u32 = 150;
     const SPACEPORT_IRON_COST: u32 = 500;
-    const SPACEPORT_URANIUM_COST: u32 = 100;
+    const SPACEPORT_URANIUM_COST: u32 = 50;
     const WORKSHOP_COST: u32 = 120;
     const CANNON_COST: u32 = 120;
-    const CANNON_DEFENSE_BASE: u32 = 6;
+    const CANNON_DEFENSE_BASE: u32 = 16;
 
     // Base output per worker per epoch (terrain-scaled at construct time)
-    const WATER_WELL_BASE: u32 = 15;
-    const IRON_MINE_BASE: u32 = 8;
-    const URANIUM_MINE_BASE: u32 = 3;
+    const WATER_WELL_BASE: u32 = 25;
+    const IRON_MINE_BASE: u32 = 15;
+    const URANIUM_MINE_BASE: u32 = 5;
     // Barracks has no resource output — it trains colonist strength instead
     const MAX_WORKERS: u8 = 3;
     const WATER_PER_COLONIST_PER_EPOCH: u32 = 5;
@@ -93,16 +93,16 @@ mod game_systems {
     const LON_PER_HEX: u32 = 72;
     const LAT_PER_HEX: u32 = 45;
 
-    // Threat check every 2 minutes (1 epoch)
-    const THREAT_CHECK_INTERVAL: u64 = 120;
+    // Threat check every epoch (30s)
+    const THREAT_CHECK_INTERVAL: u64 = 30;
 
     // Building / upgrade / training timers (seconds)
-    const BUILD_TIME: u64 = 60;          // 1 min — new construction
+    const BUILD_TIME: u64 = 10;          // 10s — new construction
     const UPGRADE_TIME_LV2: u64 = 120;   // 2 min — upgrade to level 2
     const UPGRADE_TIME_LV3: u64 = 300;   // 5 min — upgrade to level 3
     const UPGRADE_TIME_LV4: u64 = 480;   // 8 min — upgrade to level 4
     const UPGRADE_TIME_LV5: u64 = 600;   // 10 min — upgrade to level 5
-    const BARRACKS_TRAIN_BASE: u64 = 60; // 60s * building.level per training session
+    const BARRACKS_TRAIN_BASE: u64 = 30; // 30s * building.level per training session
 
     // -----------------------------------------------------------------------
     // Interface implementation
@@ -206,10 +206,24 @@ mod game_systems {
             assert!(colony.founded, "Planets: found a colony first");
             assert!(building_type != BuildingType::TownCenter, "Planets: TC is auto-placed");
 
-            // Dynamic building limit based on TC level: (tc_level + 1) * 2 = 4, 6, 8, 10, 12
-            let max_buildings: u32 = (colony.tc_level.into() + 1) * 2;
+            // Dynamic building limit based on TC level: (tc_level + 2) * 2 = 6, 8, 10, ...
+            // Houses do not count towards this limit.
+            let max_buildings: u32 = (colony.tc_level.into() + 2) * 2;
             let bcount: PlanetBuildingCount = world.read_model(planet_id);
-            assert!(bcount.count < max_buildings, "Planets: building limit reached (upgrade TC)");
+            let mut counted_buildings: u32 = 0;
+            let mut bi: u32 = 0;
+            loop {
+                if bi >= bcount.count { break; }
+                let bentry: PlanetBuildingEntry = world.read_model((planet_id, bi));
+                let existing_building: Building = world.read_model((planet_id, bentry.lon, bentry.lat));
+                if existing_building.exists && existing_building.building_type != 3 {
+                    counted_buildings += 1;
+                }
+                bi += 1;
+            };
+            if building_type != BuildingType::House {
+                assert!(counted_buildings < max_buildings, "Planets: building limit reached (upgrade TC)");
+            }
 
             // Gate high-tier buildings on TC level
             if building_type == BuildingType::Spaceport {
@@ -237,7 +251,7 @@ mod game_systems {
             let iron_cost: u32 = match building_type {
                 BuildingType::TownCenter => 0,
                 BuildingType::WaterWell => WATER_WELL_COST,
-                BuildingType::IronMine => IRON_MINE_COST,
+                BuildingType::IronMine => 0,
                 BuildingType::House => HOUSE_IRON_COST,
                 BuildingType::Barracks => BARRACKS_COST,
                 BuildingType::UraniumMine => URANIUM_MINE_COST,
@@ -257,12 +271,15 @@ mod game_systems {
                 assert!(resources.water >= HOUSE_WATER_COST, "Planets: insufficient water");
                 resources.water -= HOUSE_WATER_COST;
             }
-
-            // Spaceport: costs uranium
+            if building_type == BuildingType::IronMine {
+                assert!(resources.water >= IRON_MINE_WATER_COST, "Planets: insufficient water");
+                resources.water -= IRON_MINE_WATER_COST;
+            }
             if building_type == BuildingType::Spaceport {
                 assert!(resources.uranium >= SPACEPORT_URANIUM_COST, "Planets: insufficient uranium");
                 resources.uranium -= SPACEPORT_URANIUM_COST;
             }
+
 
             let terrain_type = planets::libs::terrain::terrain_at(planet.seed, lon, lat);
             assert!(planets::libs::terrain::is_buildable(terrain_type), "Planets: cannot build on ocean");
@@ -288,7 +305,7 @@ mod game_systems {
 
             let max_workers: u8 = match building_type {
                 BuildingType::TownCenter => 0,
-                BuildingType::WaterWell => 1,
+                BuildingType::WaterWell => MAX_WORKERS,
                 BuildingType::IronMine => MAX_WORKERS,
                 BuildingType::House => 0,
                 BuildingType::Barracks => MAX_WORKERS,
@@ -677,7 +694,7 @@ mod game_systems {
                         let colonist: Colonist = world.read_model((planet_id, aentry.colonist_id));
                         if colonist.building_lon == centry.lon && colonist.building_lat == centry.lat
                             && colonist.strength < COLONIST_MAX_STRENGTH {
-                            let new_str: u32 = colonist.strength.into() + cb.level.into();
+                            let new_str: u32 = colonist.strength.into() + cb.level.into() * 2;
                             let capped: u8 = if new_str >= COLONIST_MAX_STRENGTH.into() {
                                 COLONIST_MAX_STRENGTH
                             } else {
@@ -763,11 +780,11 @@ mod game_systems {
                 let eua: u32 = invader.epochs_until_attack.into();
                 if eua <= epochs {
                     // Passive attack: strength/10 damage, accumulated defense absorbs up to half
-                    let raw_damage = invader.strength / 10 + 1;
+                    let raw_damage = invader.strength / 20 + 1;
                     let max_absorb = raw_damage / 2 + 1;
                     let absorbed = if resources.defense >= max_absorb { max_absorb } else { resources.defense };
                     resources.defense = if resources.defense > absorbed { resources.defense - absorbed } else { 0 };
-                    let casualties = raw_damage - absorbed;
+                    let casualties = if raw_damage > absorbed { raw_damage - absorbed } else { 1 };
                     let actual = if casualties > planet.population { planet.population } else { casualties };
                     if actual > 0 {
                         _kill_random(ref world, planet_id, actual, planet.seed, planet.action_count + 3000, now);
@@ -826,9 +843,9 @@ mod game_systems {
             let spawn_interval: u64 = if is_first { EPOCH_SECONDS * 3 } else { EPOCH_SECONDS * 5 };
             if now - resources.last_threat_at >= spawn_interval {
                 let epochs_since_founding: u32 = ((now - colony.founded_at) / EPOCH_SECONDS).try_into().unwrap_or(0);
-                let time_comp: u32 = epochs_since_founding / 5;
-                let wealth_comp = resources.iron / 50;
-                let size_comp = planet.population / 3;
+                let time_comp: u32 = epochs_since_founding / 8;
+                let wealth_comp = resources.iron / 80;
+                let size_comp = planet.population / 5;
                 let threat_raw = time_comp + wealth_comp + size_comp;
                 let threat: u32 = if threat_raw > 100 { 100 } else { threat_raw };
 
@@ -838,8 +855,8 @@ mod game_systems {
                 let lat_offset: u32 = (epochs_since_founding * 73) % 180;
                 let inv_lon: u32 = (base_lon + lon_offset) % 3600;
                 let inv_lat: u32 = (base_lat + lat_offset) % 1800;
-                // Min strength 5 so early invaders are always a real threat
-                let inv_strength: u32 = threat * 4 + 5;
+                // First invader is always strength 3; later ones scale more gently with threat
+                let inv_strength: u32 = if is_first { 3 } else { threat * 2 + 3 };
 
                 invader = Invader {
                     planet_id,
@@ -848,7 +865,7 @@ mod game_systems {
                     lon: inv_lon.try_into().unwrap_or(0),
                     lat: inv_lat.try_into().unwrap_or(0),
                     spawned_at: now,
-                    epochs_until_attack: 3,
+                    epochs_until_attack: 8,
                 };
                 resources.last_threat_at = now;
                 world.write_model(@invader);

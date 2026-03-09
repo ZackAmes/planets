@@ -30,13 +30,13 @@
     fightColonists <= (unassigned?.count ?? 0)
   )
 
-  const rawDmg = $derived(invader?.active ? Math.floor((invader.strength ?? 0) / 10) + 1 : 0)
+  const rawDmg = $derived(invader?.active ? Math.floor((invader.strength ?? 0) / 20) + 1 : 0)
   const defAbsorb = $derived(Math.min(Math.floor(rawDmg / 2) + 1, resources?.defense ?? 0))
-  const netDmg = $derived(Math.max(0, rawDmg - defAbsorb))
+  const netDmg = $derived(Math.max(1, rawDmg - defAbsorb))
 </script>
 
 {#if invader?.active}
-  {@const passiveDmg = Math.max(1, Math.floor(invader.strength / 10))}
+  {@const passiveDmg = Math.floor(invader.strength / 20) + 1}
   {@const netInvDmg = Math.max(0, passiveDmg - cannonDamageRate)}
   
   <div class="panel danger">

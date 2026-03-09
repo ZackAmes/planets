@@ -22,7 +22,7 @@
   let hoveredBuildType = $state(null)
 
   const buildableTypes = $derived(
-    BUILDING_INFO.filter(i => i.type !== 0 && i.minTcLevel <= tcLevel)
+    BUILDING_INFO.filter(i => i.type !== 0)
   )
 
   function startBuild(type) {
@@ -79,21 +79,26 @@
     {#if !selectedBuildType}
       <div class="build-grid">
         {#each buildableTypes as info}
-          {@const canAfford = (resources?.iron ?? 0) >= info.ironCost && (resources?.water ?? 0) >= info.waterCost}
+          {@const isLocked = tcLevel < info.minTcLevel}
+          {@const canAfford = !isLocked && (resources?.iron ?? 0) >= info.ironCost && (resources?.water ?? 0) >= info.waterCost && (resources?.uranium ?? 0) >= (info.uraniumCost ?? 0)}
           <button
             class="build-btn"
             class:affordable={canAfford}
+            class:locked={isLocked}
             class:selected={hoveredBuildType === info.type}
             style="--bcolor:{info.color}"
             onclick={() => startBuild(info.type)}
             onmouseenter={() => hoveredBuildType = info.type}
             onmouseleave={() => hoveredBuildType = null}
-            {disabled}
+            disabled={disabled || isLocked}
           >
             <span class="bname-btn">{info.name}</span>
             <span class="bcost">
               {info.ironCost > 0 ? `${info.ironCost} iron` : 'free'}{info.waterCost > 0 ? ` + ${info.waterCost} water` : ''}{info.uraniumCost > 0 ? ` + ${info.uraniumCost} U` : ''}
             </span>
+            {#if isLocked}
+              <span class="lock-msg">TC lvl {info.minTcLevel} required</span>
+            {/if}
             {#if info.maxWorkers > 0}
               <span class="bworkers">up to {info.maxWorkers}w · {info.baseOutput} base/ep</span>
             {:else if info.type === 3}
@@ -222,6 +227,12 @@
     cursor: not-allowed;
   }
 
+  .build-btn.locked {
+    opacity: 0.5;
+    border-color: #3a3a3a;
+    background: #090912;
+  }
+
   .bname-btn {
     color: var(--bcolor);
     font-size: 0.72rem;
@@ -235,6 +246,12 @@
 
   .bworkers {
     color: #445;
+    font-size: 0.58rem;
+    font-style: italic;
+  }
+
+  .lock-msg {
+    color: #b88;
     font-size: 0.58rem;
     font-style: italic;
   }

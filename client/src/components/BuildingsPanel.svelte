@@ -89,7 +89,7 @@
       {:else if busy}
         <span class="output-tag busy-tag">Busy...</span>
       {:else if building.buildingType === 4}
-        <span class="output-tag training">+{bLevel} str/session</span>
+        <span class="output-tag training">+{bLevel * 2} str/session</span>
       {:else if totalOutput > 0}
         <span class="output-tag">
           {building.buildingType === 8 ? `+${totalOutput} def/ep` : `+${totalOutput} ${info?.resource}/ep`}
@@ -103,10 +103,15 @@
       <span class="wcount">{workerDraft}/{building.maxWorkers}</span>
       <button class="adj" onclick={() => setDraft(workerDraft + 1)} 
         disabled={disabled || busy || workerDraft >= building.maxWorkers}>+</button>
+      <button class="unassign-btn"
+        onclick={() => { setDraft(0); onassign?.(building.lon, building.lat, 0) }}
+        disabled={disabled || busy || building.workers === 0}>
+        Unassign
+      </button>
       <button class="assign-btn"
         onclick={() => onassign?.(building.lon, building.lat, workerDraft)}
         disabled={disabled || busy || workerDraft === building.workers}>
-        {busy ? 'Busy' : 'Assign'}
+        {busy ? 'Busy' : 'Apply'}
       </button>
     </div>
   </div>
@@ -139,22 +144,6 @@
     margin: 0;
     font-style: italic;
     text-align: center;
-  }
-
-  .empty-msg {
-    color: #667;
-    font-size: 0.7rem;
-    margin: 0;
-    font-style: italic;
-    line-height: 1.4;
-  }
-
-  .empty-msg {
-    color: #667;
-    font-size: 0.7rem;
-    margin: 0;
-    font-style: italic;
-    line-height: 1.4;
   }
 
   .worker-row {
@@ -286,6 +275,26 @@
     padding: 0.15rem 0.4rem;
     cursor: pointer;
     margin-left: auto;
+  }
+
+  .unassign-btn {
+    background: #2a1a1a;
+    border: 1px solid #4a2a2a;
+    border-radius: 4px;
+    color: #ff8888;
+    font-family: monospace;
+    font-size: 0.62rem;
+    padding: 0.15rem 0.4rem;
+    cursor: pointer;
+  }
+
+  .unassign-btn:hover:not(:disabled) {
+    background: #3a2020;
+  }
+
+  .unassign-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .assign-btn:hover:not(:disabled) {

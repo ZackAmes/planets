@@ -77,7 +77,8 @@
   })
   
   function handleDismissTip(tipId) {
-    dismissedTips.add(tipId)
+    // Reassign so Svelte reactivity updates immediately.
+    dismissedTips = new Set([...dismissedTips, tipId])
     // Persist to localStorage
     localStorage.setItem('planets_dismissed_tips', JSON.stringify([...dismissedTips]))
   }
@@ -127,15 +128,9 @@
       // Found an active planet
       planetId = id
       planetName = s.planet.name
-      setPlanetState(s.planet)
-      if (!s.colony) { phase = 'founding'; return }
-      colony     = s.colony
-      resources  = s.resources
-      assigned   = s.assigned
-      unassigned = s.unassigned
-      buildings  = s.buildings
-      invader    = s.invader
+      applyState(s)
       confirmedMarker = null
+      if (!s.colony) { phase = 'founding'; return }
       phase = 'managing'
       return
     }
@@ -148,6 +143,10 @@
     const pid = id ?? planetId
     const s = await fetchFullState(pid)
     if (!s) return
+    applyState(s)
+  }
+
+  function applyState(s) {
     setPlanetState(s.planet)
     if (s.colony) colony = s.colony
     resources  = s.resources
@@ -155,6 +154,20 @@
     unassigned = s.unassigned
     buildings  = s.buildings
     invader    = s.invader
+  }
+
+  /**
+   * Poll fetchFullState until `until(state)` returns true or retries exhausted.
+   * Applies state on each successful fetch so the UI updates as soon as the node catches up.
+   */
+  async function pollUntil(pid, until, { tries = 10, delay = 800 } = {}) {
+    for (let i = 0; i < tries; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, delay))
+      const s = await fetchFullState(pid)
+      if (!s) continue
+      applyState(s)
+      if (until(s)) return
+    }
   }
 
   async function handleManualRefresh() {
@@ -269,6 +282,22 @@
     }
   }
 
+  function isUserCancelledTx(error) {
+    const code = error?.code ?? error?.cause?.code
+    const msg = String(error?.message ?? error ?? '').toLowerCase()
+    return (
+      code === 4001 ||
+      code === 'USER_ABORTED' ||
+      msg.includes('user rejected') ||
+      msg.includes('rejected by user') ||
+      msg.includes('user aborted') ||
+      msg.includes('transaction cancelled') ||
+      msg.includes('transaction canceled') ||
+      msg.includes('request canceled') ||
+      msg.includes('request cancelled')
+    )
+  }
+
   // ---------------------------------------------------------------------------
   // Building selection
   // ---------------------------------------------------------------------------
@@ -307,7 +336,7 @@
       confirmedMarker = pendingMarker
       pendingLocation = null
       pendingMarker = null
-      await refreshColonyState(planetId)
+      await pollUntil(planetId, s => s.colony !== null)
       phase = buildings.some(b => b.buildingType === 6) ? 'won' : 'managing'
       txStatus = ''
     } catch (e) {
@@ -350,7 +379,7 @@
       const tx = await constructBuilding(account, planetId, lon, lat, type)
       console.log('[construct_building]', tx, { lon, lat, type })
       await waitForTx(getProvider(), tx)
-      await refreshColonyState(planetId)
+      await pollUntil(planetId, s => s.buildings.some(b => b.lon === lon && b.lat === lat))
       selectedBuildType = null
       pendingBuildSite = null
       if (type === 6) {
@@ -363,7 +392,12 @@
       }
       txStatus = ''
     } catch (e) {
-      txStatus = 'Error: ' + (e.message ?? String(e))
+      if (isUserCancelledTx(e)) {
+        // Keep current selection/site so the player can retry instantly.
+        txStatus = 'Build cancelled.'
+      } else {
+        txStatus = 'Error: ' + (e.message ?? String(e))
+      }
     } finally { txPending = false }
   }
 
@@ -407,8 +441,9 @@
     txPending = true
     txStatus = 'Upgrading Town Center...'
     try {
+      const previousLevel = colony?.tcLevel ?? 1
       await upgradeTc(account, planetId)
-      await refreshColonyState(planetId)
+      await pollUntil(planetId, s => (s.colony?.tcLevel ?? previousLevel) > previousLevel)
       txStatus = ''
     } catch (e) {
       txStatus = 'Error: ' + (e.message ?? String(e))
@@ -475,27 +510,36 @@
   const tcLevel = $derived(colony?.tcLevel ?? 1)
   const rates = $derived(computeRates(buildings ?? [], planet?.population ?? 0))
   
-  const epochProgress = $derived((() => {
-    const ref = planet?.lastActionAt ?? 0
-    if (!ref) return 0
-    return Math.min(1, (nowSeconds - ref) / EPOCH_SECONDS)
-  })())
-
-  const epochCountdown = $derived.by(() => {
-    const ref = planet?.lastActionAt ?? 0
-    if (!ref) return '--:--'
-    const remaining = Math.max(0, EPOCH_SECONDS - (nowSeconds - ref))
-    if (remaining === 0) return 'READY'
-    const m = Math.floor(remaining / 60)
-    const s = remaining % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
-  })
-  
-  const epochsElapsed = $derived.by(() => {
+  // Complete epochs that have accumulated since last collect
+  const epochsReady = $derived.by(() => {
     const ref = planet?.lastActionAt ?? 0
     if (!ref) return 0
     return Math.floor((nowSeconds - ref) / EPOCH_SECONDS)
   })
+
+  // Progress within the current (next) partial epoch (0–1)
+  const epochFraction = $derived.by(() => {
+    const ref = planet?.lastActionAt ?? 0
+    if (!ref) return 0
+    const elapsed = nowSeconds - ref
+    return (elapsed % EPOCH_SECONDS) / EPOCH_SECONDS
+  })
+
+  // Countdown to the next epoch tick
+  const epochNextIn = $derived.by(() => {
+    const ref = planet?.lastActionAt ?? 0
+    if (!ref) return '--:--'
+    const elapsed = nowSeconds - ref
+    const remaining = EPOCH_SECONDS - (elapsed % EPOCH_SECONDS)
+    const m = Math.floor(remaining / 60)
+    const s = remaining % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+  })
+
+  // Keep for any legacy uses
+  const epochsElapsed = epochsReady
+  const epochProgress = epochFraction
+  const epochCountdown = epochNextIn
 
   const threat = $derived(
     (planet && resources) ? computeThreat(planet, resources, nowSeconds) : 0
@@ -576,9 +620,9 @@
           {planet}
           {buildings}
           {timeSinceFounding}
-          {epochProgress}
-          {epochCountdown}
-          {epochsElapsed}
+          epochFraction={epochFraction}
+          epochsReady={epochsReady}
+          epochNextIn={epochNextIn}
           oncollect={handleCollect}
           disabled={txPending}
         />
@@ -595,6 +639,7 @@
         {hasWorkshop}
         {tcLevel}
         {populationAtCap}
+        dismissedTipIds={[...dismissedTips]}
         onDismiss={handleDismissTip}
       />
     {/if}
@@ -675,15 +720,6 @@
           disabled={txPending}
         />
 
-        <InvaderPanel
-          {invader}
-          {unassigned}
-          {resources}
-          cannonDamageRate={rates.cannonDamageRate}
-          onfight={handleFightInvader}
-          disabled={txPending}
-        />
-
         {#if !buildMode}
           <button class="build-mode-btn" onclick={handleToggleBuildMode} disabled={txPending}>
             Enter Build Mode
@@ -733,6 +769,15 @@
   <!-- Left side panels -->
   {#if phase === 'managing' && planet}
     <div class="ui-left">
+      <InvaderPanel
+        {invader}
+        {unassigned}
+        {resources}
+        cannonDamageRate={rates.cannonDamageRate}
+        onfight={handleFightInvader}
+        disabled={txPending}
+      />
+
       {#if selectedBuildingData}
         <BuildingsPanel
           building={selectedBuildingData}
@@ -748,7 +793,11 @@
       <ListsPanel
         {buildings}
         colonists={{ assigned, unassigned }}
+        {resources}
+        {tcLevel}
+        disabled={txPending}
         onbuildingselect={handleBuildingClick}
+        onupgradebuilding={handleUpgradeBuilding}
       />
     </div>
   {/if}

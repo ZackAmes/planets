@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x381899226c066a0262f45d6ab815f89818e0874ec3e66cdf72b5e92d8db4680",
-    "address": "0x7b36cad51cb22e147156176369b09714c6640aad3e43306b0d286e32de3af71",
-    "seed": "planets_sepolia_v9",
+    "address": "0x68630e43e1555b8bcee814348e9f0a2c897dde264b273a7542a7588978e78d7",
+    "seed": "planets_sepolia_v11",
     "name": "Starnet",
     "entrypoints": [
       "uuid",
@@ -1485,8 +1485,8 @@
   },
   "contracts": [
     {
-      "address": "0x11f53dfa81ca87e069a9d7f22cb40e198505b7df96c7c6387b37ed2b8710c89",
-      "class_hash": "0x4de2f2bd6c9d1858c2a90e6e28dd853322432f9eb6763e14c92f19b2e2f152e",
+      "address": "0x73ebb86f626f2e2670f2a049a7735413ac654527b5dd586b940194e70c624ff",
+      "class_hash": "0x1300dc4a7945ae7d1565eb2aa5093ba8f91aa9d0be8c053562d019bfefcd7f8",
       "abi": [
         {
           "type": "impl",
@@ -1849,7 +1849,7 @@
       ]
     },
     {
-      "address": "0x7b7003b8a223f5b9aa79c0ccd8779d7aeb7d6a07973d9a932cd61f6e957204f",
+      "address": "0x466741003b0310908e1e0db6579c03f3df1266797020e26f404b4d08a3c37da",
       "class_hash": "0x62c0547e3cda631d44eb8582641b46cfa51dadd9e944bb18d74321de3e2947d",
       "abi": [
         {
@@ -2669,7 +2669,7 @@
       ]
     },
     {
-      "address": "0x4863dd511de55746df2cb904d8d962552cad91821ae3ce05a6be56162b60081",
+      "address": "0x3254bfd8669e8d6912c9312bdad49679f037698908a0c8ddac3d3df2d416019",
       "class_hash": "0x6a38d9f76f4dc710c9c5f919fa7da21e417dfc831783b2eb03999497d06b929",
       "abi": [
         {
@@ -3340,7 +3340,7 @@
       ]
     },
     {
-      "address": "0x6e5642fba96a975f7251736ded80d8b3710f286e97aa7f99470ae316eac5ba6",
+      "address": "0x9d14e30996c0cc59172f9ed5ff425fbfd944453bd3f0298544af2b24970330",
       "class_hash": "0x5d51d464974d09e955dad90b14d16e3602e44096e0f99af92d566218d4e1f46",
       "abi": [
         {

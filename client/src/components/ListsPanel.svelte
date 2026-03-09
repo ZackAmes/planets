@@ -1,10 +1,14 @@
 <script>
-  import { BUILDING_INFO, formatLonLat } from '../lib/gameLogic.js'
+  import { BUILDING_INFO, formatLonLat, upgradeBuildingCost } from '../lib/gameLogic.js'
 
   let {
     buildings = [],
     colonists = { assigned: null, unassigned: null },
+    resources = null,
+    tcLevel = 1,
+    disabled = false,
     onbuildingselect,
+    onupgradebuilding,
   } = $props()
 
   let activeTab = $state('buildings')
@@ -14,6 +18,21 @@
   
   function selectBuilding(lon, lat) {
     onbuildingselect?.(lon, lat)
+  }
+
+  function canUpgradeBuilding(b) {
+    const level = b.level ?? 1
+    if ((b.maxWorkers ?? 0) === 0) return false
+    if (level >= 3) return false
+    if (level >= tcLevel) return false
+    const cost = upgradeBuildingCost(level)
+    return (resources?.iron ?? 0) >= cost.iron
+  }
+
+  function handleUpgradeClick(event, b) {
+    event.stopPropagation()
+    if (!canUpgradeBuilding(b) || disabled) return
+    onupgradebuilding?.(b.lon, b.lat)
   }
 </script>
 
@@ -43,13 +62,24 @@
             <h4>Production Buildings</h4>
             {#each workerBuildings as b}
               {@const info = BUILDING_INFO[b.buildingType]}
-              <button class="list-item" onclick={() => selectBuilding(b.lon, b.lat)}>
+              {@const upCost = upgradeBuildingCost(b.level ?? 1)}
+              <div class="list-item" role="button" tabindex="0" onclick={() => selectBuilding(b.lon, b.lat)} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectBuilding(b.lon, b.lat)}>
                 <span class="building-icon" style="background:{info?.color}"></span>
                 <div class="item-info">
                   <span class="item-name">{info?.name}</span>
                   <span class="item-detail">lv{b.level ?? 1} · {b.workers}/{b.maxWorkers}w · {formatLonLat(b.lon, b.lat)}</span>
                 </div>
-              </button>
+                {#if (b.level ?? 1) < 3}
+                  <button
+                    class="upgrade-mini"
+                    onclick={(e) => handleUpgradeClick(e, b)}
+                    disabled={disabled || !canUpgradeBuilding(b)}
+                    title="Upgrade ({upCost.iron} iron)"
+                  >
+                    +lv
+                  </button>
+                {/if}
+              </div>
             {/each}
           </div>
         {/if}
@@ -59,13 +89,13 @@
             <h4>Utility Buildings</h4>
             {#each utilityBuildings as b}
               {@const info = BUILDING_INFO[b.buildingType]}
-              <button class="list-item" onclick={() => selectBuilding(b.lon, b.lat)}>
+              <div class="list-item" role="button" tabindex="0" onclick={() => selectBuilding(b.lon, b.lat)} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && selectBuilding(b.lon, b.lat)}>
                 <span class="building-icon" style="background:{info?.color}"></span>
                 <div class="item-info">
                   <span class="item-name">{info?.name}</span>
                   <span class="item-detail">lv{b.level ?? 1} · {formatLonLat(b.lon, b.lat)}</span>
                 </div>
-              </button>
+              </div>
             {/each}
           </div>
         {/if}
@@ -199,6 +229,27 @@
     cursor: pointer;
     transition: all 0.15s;
     text-align: left;
+  }
+
+  .upgrade-mini {
+    background: #1a2a1a;
+    border: 1px solid #3a6a3a;
+    border-radius: 3px;
+    color: #6aff6a;
+    font-family: monospace;
+    font-size: 0.58rem;
+    padding: 0.1rem 0.3rem;
+    cursor: pointer;
+    margin-left: 0.35rem;
+  }
+
+  .upgrade-mini:hover:not(:disabled) {
+    background: #253525;
+  }
+
+  .upgrade-mini:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   .list-item:hover {

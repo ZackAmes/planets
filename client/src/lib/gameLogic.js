@@ -12,7 +12,7 @@ export const PLANET_HEIGHT = 40
 export const LON_PER_HEX = 72   // 3600 / 50
 export const LAT_PER_HEX = 45   // 1800 / 40
 
-export const EPOCH_SECONDS = 120   // 2 minutes per epoch
+export const EPOCH_SECONDS = 30   // 30 seconds per epoch
 export const MAX_EPOCHS    = 720   // cap at 24 hours
 
 // Building type constants (must match BuildingType enum discriminants in Cairo)
@@ -20,14 +20,14 @@ export const BUILDING_TYPES = { TOWN_CENTER: 0, WATER_WELL: 1, IRON_MINE: 2, HOU
 
 export const BUILDING_INFO = [
   { type: 0, name: 'Town Center',  color: '#ffdd44', ironCost: 0,   waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0, resource: null,      minTcLevel: 1, description: 'Colony hub. Upgrade to expand building slots and raise max building level.' },
-  { type: 1, name: 'Water Well',   color: '#44aaff', ironCost: 50,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 1, baseOutput: 15, resource: 'water',  minTcLevel: 1, description: 'Water / worker / epoch (terrain: beach > plains > forest). Worker cap scales with level: 1 -> 2 -> 3.' },
-  { type: 2, name: 'Iron Mine',    color: '#aaaaaa', ironCost: 80,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 8,  resource: 'iron',   minTcLevel: 1, description: 'Iron / worker / epoch (terrain: mountain > desert > forest)' },
+  { type: 1, name: 'Water Well',   color: '#44aaff', ironCost: 50,  waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 25, resource: 'water',  minTcLevel: 1, description: 'Produces water per worker per epoch. Each colonist consumes 5 water/epoch. Terrain bonus: beach > plains > forest.' },
+  { type: 2, name: 'Iron Mine',    color: '#aaaaaa', ironCost: 0,   waterCost: 80, uraniumCost: 0,   maxWorkers: 3, baseOutput: 15, resource: 'iron',   minTcLevel: 1, description: 'Produces iron per worker per epoch. Costs water to construct. Terrain bonus: mountain > desert > forest.' },
   { type: 3, name: 'House',        color: '#44ff88', ironCost: 60,  waterCost: 50, uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Spawns 1 new colonist immediately (requires pop below cap).' },
-  { type: 4, name: 'Barracks',     color: '#4466ff', ironCost: 100, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Trains assigned colonists: +level strength/epoch, up to max 10. Stronger fighters deal more damage in combat.' },
-  { type: 5, name: 'Uranium Mine', color: '#bb44ff', ironCost: 200, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 3,  resource: 'uranium',minTcLevel: 3, description: 'Uranium / worker / epoch. Required for high-tier upgrades. (terrain: mountain > desert)' },
-  { type: 6, name: 'Spaceport',    color: '#ffffff', ironCost: 500, waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 3, description: 'WIN CONDITION — launch your colony to the stars. Requires TC level 3.' },
+  { type: 4, name: 'Barracks',     color: '#4466ff', ironCost: 100, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 0,  resource: null,     minTcLevel: 1, description: 'Trains assigned colonists: +2x level strength per training session, up to max 10. Stronger fighters deal more damage in combat.' },
+  { type: 5, name: 'Uranium Mine', color: '#bb44ff', ironCost: 200, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 5,  resource: 'uranium',minTcLevel: 3, description: 'Produces uranium per worker per epoch. (terrain: mountain > desert)' },
+  { type: 6, name: 'Spaceport',    color: '#ffffff', ironCost: 500, waterCost: 0,  uraniumCost: 50,  maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 3, description: 'WIN CONDITION — launch your colony to the stars. Requires TC level 3 and uranium.' },
   { type: 7, name: 'Workshop',     color: '#ff9933', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 0, baseOutput: 0,  resource: null,     minTcLevel: 2, description: 'Provides a passive defense bonus to your colony.' },
-  { type: 8, name: 'Cannon',       color: '#ff4400', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 6,  resource: 'defense',minTcLevel: 1, description: 'Produces defense/ep AND fires on active invaders each epoch, reducing their strength. (terrain: mountain > snow > plains)' },
+  { type: 8, name: 'Cannon',       color: '#ff4400', ironCost: 120, waterCost: 0,  uraniumCost: 0,   maxWorkers: 3, baseOutput: 16, resource: 'defense',minTcLevel: 1, description: 'When no invader: stockpiles defense each epoch. When invader is active: deals stronger direct damage to reduce their strength. Defense absorbs up to half of each passive attack.' },
 ]
 
 /** Iron cost to upgrade TC from tcLevel → tcLevel+1 (max TC level 3) */
@@ -215,12 +215,9 @@ export function buildingOutputPerWorkerEpoch(buildingType, bonus) {
  */
 export function computeThreat(planet, resources, nowSeconds) {
   const timeAlive = nowSeconds - (planet.spawnedAt ?? 0)
-  // Threat builds faster - time component doubled (was /10, now /5)
-  const timeComp   = Math.floor((timeAlive / EPOCH_SECONDS) / 5)
-  // Resources matter more - wealth component doubled (was /100, now /50)
-  const wealthComp = Math.floor((resources?.iron ?? 0) / 50)
-  // Population matters more (was /20, now /3 to match contract)
-  const sizeComp   = Math.floor(planet.population / 3)
+  const timeComp   = Math.floor((timeAlive / EPOCH_SECONDS) / 8)
+  const wealthComp = Math.floor((resources?.iron ?? 0) / 80)
+  const sizeComp   = Math.floor(planet.population / 5)
   return Math.min(100, timeComp + wealthComp + sizeComp)
 }
 

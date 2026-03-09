@@ -4,7 +4,7 @@
 /// Only one invader can be active per planet at a time.
 /// strength: total combat power of the invader force.
 /// lon/lat: where the invaders landed (near the colony).
-/// epochs_until_attack: countdown timer (starts at 3, attacks at 0)
+/// epochs_until_attack: countdown timer (starts at 8, attacks at 0)
 #[derive(Introspect, Drop, Serde)]
 #[dojo::model]
 pub struct Invader {
